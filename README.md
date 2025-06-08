@@ -8,11 +8,13 @@ ______
 
 ## Objectifs
 
+Automatisation de requêtes depuis la librairie de gestion de LLMs (LM Studio, Transformer Labs, Ollama, ...) afin de se servir de la base de donnée comme d'une mémoire à long terme.
+
 - Mémoriser automatiquement les conversations avec un LLM local (ex. : LM Studio).  
 - Éviter les doublons grâce à un système de hachage SHA-256.  
 - Extraire et stocker des mots-clés pertinents avec **KeyBERT** pour la recherche.  
 - Faciliter l’exploration des échanges passés via SQL ou un front-end à venir.
-- Ajouter du contexte à des prompts visés.
+- Ajouter du contexte à des prompts désirés.
 
 ______
 
@@ -31,23 +33,22 @@ Chaque échange est :
 
 ### 2. Utilisation
 
-Deux options d'extractions avec `import_lmstudio.py` :  
+a. Deux options d'extractions avec `import_lmstudio.py` :  
 - **Lancement manuel** avec `synchro_conversations.command`, qui rend le script **exécutable**.  
 - **Automatiser avec `cron`** pour exécuter le script à intervalles réguliers.
 
+b. Utilisation de l'outil `enhancer.py` : contient la fonction de synchronisation de la base de donnée via une requête vers `import_lmstudio.py`
+
 ### 3. Amélioration de prompts
 
-Automatisation de requêtes depuis la librairie de gestion de LLMs (LM Studio, Transformer Labs, Ollama, ...), afin de se servir de la base de donnée comme d'une mémoire à long terme.
-
-Première piste : confection d'un script python pour améliorer le prompt donné par l'utilisateur avec la base SQL.  
-Le script `enhancer_llm.py` :  
-- Demande la question initiale,  
+Le script `enhancer.py` :
+- Interface graphique d'amélioration de prompts,  
+- Pose la question initiale,  
 - Extrait les mots-clés correspondants,  
 - Récupère les couples questions/réponses similaires dans la base SQL,  
 - Résume les réponses avec un LLM local (sshleifer/distilbart-cnn-12-6),  
 - Colle dans le presse-papiers un prompt complet contenant les précédents échanges résumés comme contexte, avec la question initiale à la fin.
-
-Bonus : Le script `enhancer_llm_tkinter.py` propose une interface graphique, tout en incluant les mêmes caractéristiques. Il est exécutable avec `prompt_enhancer.command`.
+- Exécutable avec `prompt_enhancer.command`.
 
 Remarque : le LLM local utilisé pour le raccourcissement du contexte peut être téléchargé (1.2Gb) en amont avec le script `model_download.py`.
 
