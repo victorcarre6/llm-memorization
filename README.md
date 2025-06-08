@@ -40,7 +40,7 @@ Le script `enhancer.py` :
 - Extrait les mots-clés correspondants,  
 - Récupère les couples questions/réponses similaires dans la base SQL,  
 - Résume les réponses avec un LLM local (sshleifer/distilbart-cnn-12-6),  
-- Colle dans le presse-papiers un prompt complet contenant les précédents échanges résumés comme contexte, en terminant avec la question initiale.
+- Colle dans le presse-papiers un prompt complet contenant les précédents échanges résumés comme contexte, en terminant avec la question initiale,
 - Offre une interface graphique avec pop-up d'aide,  
 - Exécutable avec `prompt_enhancer.command`.
 ______
