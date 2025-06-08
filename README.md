@@ -43,6 +43,7 @@ Le script `enhancer.py` :
 - Colle dans le presse-papiers un prompt complet contenant les précédents échanges résumés comme contexte, en terminant avec la question initiale.
 - Offre une interface graphique avec pop-up d'aide,  
 - Exécutable avec `prompt_enhancer.command`.
+______
 
 Remarque : le LLM local utilisé pour le raccourcissement du contexte peut être téléchargé en amont avec le script `model_download.py` (1.2Gb). 
 
