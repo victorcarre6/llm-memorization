@@ -4,7 +4,7 @@
 
 > Le projet est conçu pour fonctionner sans appel aux API externes, gardant la confidentialité des données.
 
-> L'idée est de fournir un contexte important et personnalisé lors du début d'une conversation avec un LLM, en ajoutant des informations passées lors du premier prompt de l'échange.
+> L'idée est de fournir un contexte important et personnalisé lors du début d'une conversation avec un LLM, en ajoutant des informations mémoires au premier prompt de l'échange.
 
 ______
 
