@@ -45,8 +45,9 @@ Le script `enhancer.py` :
 - Exécutable avec `prompt_enhancer.command`.
 
 Remarque : le LLM local utilisé pour le raccourcissement du contexte peut être téléchargé en amont avec le script `model_download.py` (1.2Gb). 
-Le choix du modèle `sshleifer/distilbart-cnn-12-6` été fait en prenant en compte sa taille, sa puissance, et ses besoins matériels (4 Go RAM libre nécessaire). Le but était de trouver un équilibre pour éviter d'avoir des requêtes avec un temps d'attente supérieur à une dizaine de secondes. D'autres modèles moins gourmands peuvent être utilisés au détriment de la rapidité, tel que `Falconsai/text_summarization`.
-
+Le choix du modèle `sshleifer/distilbart-cnn-12-6` été fait en prenant en compte sa taille, sa puissance, et ses besoins matériels (4 Go RAM libre nécessaire).
+Le but était de trouver un équilibre pour éviter d'avoir des requêtes avec un temps d'attente supérieur à une dizaine de secondes. 
+D'autres modèles moins lourds peuvent être utilisés au détriment de la rapidité, tel que `Falconsai/text_summarization` qui ne pèse que  ~250 Mb. Ce modèle peut être utilisé dans le  script `enhancer_light.py`, lancé avec `prompt_enhancer_light.command`.
 ______
 
 ## Installation
@@ -78,9 +79,27 @@ pip install -r requirements.txt
 python scripts/model_download.py
 ```
 
+5. Construction de l'arborescence
+
+Aucun changement d'arborescence n'est nécessaire si les scripts sont exécutés depuis le repository cloné, hormis la ligne 10 de `import_lmstudio.py`.
+
+Déplacer la base `conversations.db` depuis llm-memorization/datas/ vers le dossier désiré.
+Adapter les chemins suivants :
+
+- `SQL_memorization_base.ipynb`
+ --> [Cellule 1] : db_path = '/chemin/relatif/vers/conversations.db'
+- `import_lmstudio.py` 
+--> ligne 9 : DB_PATH = '/chemin/relatif/vers/conversations.db'
+--> ligne 10 : FOLDER_PATH = '~/user/.lmstudio/conversations'  # Chemin vers les fichiers .json conversationnels, souvent dans les fichiers cachés
+- `enchancer.py`
+--> ligne 17 : DB_PATH = '/chemin/relatif/vers/conversations.db'
+--> ligne 29 : subprocess.run(["python3", "/chemin/relatif/vers/import_lmstudio.py"], check=True)
+
 ______
 
 ## Lancement
+Adapter les chemins suivants :
+
 
 - Pour lancer le script de synchronisation de mémoire et d'amélioration de prompts avec interface :
 ```bash
@@ -89,7 +108,6 @@ ______
 
 ______
 
-## Remarques
+## Remarque
 
-- Le dossier par défaut de LM Studio est à configurer dans import_lmstudio.py.
-- Le script enhancer_llm.py copie le prompt enrichi dans le presse-papiers, prêt à être collé dans LM Studio ou autre.
+- Ces scripts sont fonctionnels avec LM Studio, mais devraient pouvoir être adapté à tout software mettant à disposition les conversations au format `.json`.

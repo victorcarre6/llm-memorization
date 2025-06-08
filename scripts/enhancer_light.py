@@ -14,13 +14,13 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 TOP_K = 5
 
 # --- Connexion à la base ---
-DB_PATH = '/Users/victorcarre/Code/Projects/llm-memorization/datas/conversations.db' # Chemin vers la base de données SQLite, à adapter à votre path
+DB_PATH = '/Users/victorcarre/Code/Projects/llm-memorization/datas/conversations.db'  # Chemin vers la base de données SQLite, à adapter à votre path
 conn = sqlite3.connect(DB_PATH)
 cur = conn.cursor()
 
 # --- Initialisation des modèles ---
 kw_model = KeyBERT()  # modèle d'extraction de mots-clés local
-summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6") # modèle de résumé local, adaptable si besoin
+summarizer = pipeline("summarization", model="Falconsai/text_summarization") # Modèle de résumé local, adaptable si besoin
 
 # === FONCTIONS ===
 
@@ -79,7 +79,7 @@ def show_help():
         "• Synchroniser les conversations : ajoute les nouveaux échanges depuis LM Studio à la base de données.\n\n"
         "• Générer prompt : extrait les mots-clés de votre question, cherche des conversations similaires dans votre base SQL, puis compresse les informations avec un LLM local.\n\n"
         "Le prompt final est affiché puis automatiquement copié dans votre presse-papier !\n\n"
-        "Pour en savoir plus, obtenir plus d'informations à propos d'un éventuel bloquage des scripts, ou me contacter, visitez : github.com/victorcarre6/llm-memorization"
+        "Pour en savoir plus ou obtenir plus d'informations à propos d'un éventuel bloquage des scripts, visitez : github.com/victorcarre6/llm-memorization"
     )
     help_window = tk.Toplevel(root)
     help_window.title("Aide")
@@ -178,7 +178,7 @@ footer = tk.Label(bottom_frame,
                   fg="white",
                   bg="#323232",
                   cursor="hand1",
-                  anchor="w",
+                  anchor="w",  # alignement à gauche
                   justify="left")
 footer.pack(side=tk.LEFT, fill=tk.X, expand=True)
 footer.bind("<Button-1>", open_github)

@@ -6,8 +6,8 @@ from keybert import KeyBERT
 from datetime import datetime
 
 # === CONFIGURATION ===
-DB_PATH = '/Users/victorcarre/Code/Projects/llm-memorization/datas/conversations.db'
-FOLDER_PATH = '/Users/victorcarre/.lmstudio/conversations'  # ← À modifier
+DB_PATH = '/Users/victorcarre/Code/Projects/llm-memorization/datas/conversations.db'  # Chemin vers la base de données SQLite, à adapter à votre path
+FOLDER_PATH = '/Users/victorcarre/.lmstudio/conversations'  # Chemin vers les fichiers .json conversationnels, à adapter à votre path
 EXTENSIONS = ['.json']
 TOP_K = 5
 
