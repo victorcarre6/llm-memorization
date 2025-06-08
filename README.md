@@ -10,14 +10,9 @@ ______
 
 ## Objectifs
 
-Automatisation de requêtes depuis la librairie de gestion de LLMs (LM Studio, Transformer Labs, Ollama, ...) afin de se servir de la base de donnée comme d'une mémoire à long terme.
-
-- Mémoriser automatiquement les conversations avec un LLM local (ex. : LM Studio).  
-- Éviter les doublons grâce à un système de hachage SHA-256.  
-- Extraire et stocker des mots-clés pertinents avec **KeyBERT** pour la recherche.  
-- Faciliter l’exploration des échanges passés via SQL ou un front-end à venir.
-- Ajouter du contexte à des prompts désirés.
-
+- Automatisation de requêtes depuis la librairie de gestion conversationnelle de LLMs locaux (LM Studio, Transformer Labs, Ollama, ...) pour constituer une base de donnée SQLite.
+- Amélioration de prompts en proposant un contexte adapté à la question posée en s'appuyant sur les échanges précédents.
+- Interface graphique tout-en-un.
 ______
 
 ## Fonctionnement
@@ -30,29 +25,27 @@ Chaque échange est :
 - Stocké dans la table `conversations`.  
 - Hashé avec SHA-256 pour éviter les doublons.  
 - Horodaté pour pouvoir retrouver des conversations en fonction du temps.  
-- Analysé via **KeyBERT** pour en extraire 5 mots-clés (n-grammes 1 à 2).  
-- Les mots-clés sont stockés dans la table `keywords`.
+- Analysé via **KeyBERT** pour en extraire 5 mots-clés, qui sont stockés dans la table `keywords`.
 
-### 2. Utilisation
-
-a. Deux options d'extractions avec `import_lmstudio.py` :  
+Utilisation de `import_lmstudio.py` :
+- **Synchronisation** depuis l'outil `enhancer.py`.
 - **Lancement manuel** avec `synchro_conversations.command`, qui rend le script **exécutable**.  
 - **Automatiser avec `cron`** pour exécuter le script à intervalles réguliers.
 
-b. Utilisation de l'outil `enhancer.py` : contient la fonction de synchronisation de la base de donnée via une requête vers `import_lmstudio.py`
-
-### 3. Amélioration de prompts
+### 2. Amélioration de prompts
 
 Le script `enhancer.py` :
-- Interface graphique d'amélioration de prompts,  
+
 - Pose la question initiale,  
 - Extrait les mots-clés correspondants,  
 - Récupère les couples questions/réponses similaires dans la base SQL,  
 - Résume les réponses avec un LLM local (sshleifer/distilbart-cnn-12-6),  
-- Colle dans le presse-papiers un prompt complet contenant les précédents échanges résumés comme contexte, avec la question initiale à la fin.
+- Colle dans le presse-papiers un prompt complet contenant les précédents échanges résumés comme contexte, en terminant avec la question initiale.
+- Offre une interface graphique avec pop-up d'aide,  
 - Exécutable avec `prompt_enhancer.command`.
 
-Remarque : le LLM local utilisé pour le raccourcissement du contexte peut être téléchargé (1.2Gb) en amont avec le script `model_download.py`.
+Remarque : le LLM local utilisé pour le raccourcissement du contexte peut être téléchargé en amont avec le script `model_download.py` (1.2Gb). 
+Le choix du modèle `sshleifer/distilbart-cnn-12-6` été fait en prenant en compte sa taille, sa puissance, et ses besoins matériels (4 Go RAM libre nécessaire). Le but était de trouver un équilibre pour éviter d'avoir des requêtes avec un temps d'attente supérieur à une dizaine de secondes. D'autres modèles moins gourmands peuvent être utilisés au détriment de la rapidité, tel que `Falconsai/text_summarization`.
 
 ______
 
