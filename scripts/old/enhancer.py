@@ -3,6 +3,8 @@ import re
 import pyperclip
 import tkinter as tk
 import subprocess
+import sklearn
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from tkinter import scrolledtext, ttk
 from transformers import pipeline
 from keybert import KeyBERT
@@ -31,26 +33,64 @@ def sync_conversations():
     except subprocess.CalledProcessError:
         label_status.config(text="Erreur lors de la synchronisation.")
 
-def extract_keywords(text, top_n=5):
-    keywords = kw_model.extract_keywords(text, keyphrase_ngram_range=(1, 2), stop_words='english', top_n=top_n)
-    return [kw for kw, _ in keywords]
+def extract_keywords(text, top_n=20):
+    raw_keywords = kw_model.extract_keywords(
+        text,
+        keyphrase_ngram_range=(1, 1),  # mots uniques uniquement
+        stop_words='english',
+        top_n=top_n * 2  # extraire plus pour filtrer ensuite
+    )
+
+    seen = set()
+    filtered_keywords = []
+
+    for kw, _ in raw_keywords:
+        kw_clean = kw.lower().strip()
+        # filtre : pas de stopwords, que des mots alphabétiques, min 3 lettres, pas de doublons
+        if (
+            kw_clean not in seen and
+            kw_clean not in ENGLISH_STOP_WORDS and
+            len(kw_clean) > 2 and
+            re.match(r'^[a-zA-Z\-]+$', kw_clean)
+        ):
+            seen.add(kw_clean)
+            filtered_keywords.append(kw_clean)
+
+        if len(filtered_keywords) >= top_n:
+            break
+
+    return filtered_keywords
 
 def get_relevant_context(user_question, limit=TOP_K):
     keywords = extract_keywords(user_question)
     print(f"Mots-clés extraits de la question : {keywords}")
     if not keywords:
         return []
+
     placeholders = ', '.join(['?'] * len(keywords))
     query = f'''
-        SELECT c.user_input, c.llm_output, c.timestamp
+        SELECT c.id, c.user_input, c.llm_output, c.timestamp, COUNT(k.keyword) as match_count
         FROM conversations c
         JOIN keywords k ON c.id = k.conversation_id
         WHERE k.keyword IN ({placeholders})
-        ORDER BY c.timestamp DESC
-        LIMIT ?
+        GROUP BY c.id
+        ORDER BY match_count DESC, c.timestamp DESC
     '''
-    cur.execute(query, (*keywords, limit))
-    return cur.fetchall()
+    cur.execute(query, (*keywords,))
+    rows = cur.fetchall()
+
+    seen_ids = set()
+    filtered_context = []
+
+    for row in rows:
+        convo_id = row[0]
+        if convo_id not in seen_ids:
+            seen_ids.add(convo_id)
+            filtered_context.append(row[1:])  # on retire l'id pour garder le format initial
+        if len(filtered_context) >= limit:
+            break
+
+    return filtered_context
 
 def clean_text(text):
     # Supprime les blocs de code délimités par ```python``` et ```
@@ -62,13 +102,46 @@ def summarize_text(text, max_len=100, min_len=30):
     summary = summarizer(cleaned, max_length=max_len, min_length=min_len, do_sample=False)
     return summary[0]['summary_text']
 
-def generate_prompt(context, question):
+#def generate_prompt(context, question): # Fonction qui liste les contextes
     prompt = "Voici le contexte pertinent extrait des conversations passées :\n\n"
     for i, (user_input, llm_output, timestamp) in enumerate(context, 1):
         summary = summarize_text(llm_output)  # appel OK ici
         prompt += f"[Contexte {i} - {timestamp}]\nQuestion: {user_input}\nRéponse résumée: {summary}\n\n"
     prompt += f"Question à traiter : {question}\n\nRéponds de façon claire et synthétique."
     return prompt
+
+def generate_prompt_paragraph(context, question): # Fonction qui génère un paragraphe de contexte, pour limiter la quantité de tokens
+    # Préparation des éléments pour le prompt
+    previous_questions = []
+    conversation_summary = []
+    
+    # Collecte des informations du contexte
+    for i, (user_input, llm_output, timestamp) in enumerate(context, 1):
+        previous_questions.append(user_input)
+        summary = summarize_text(llm_output)
+        conversation_summary.append(summary)
+    
+    # Construction du paragraphe
+    paragraph = "Au cours de tes discussions avec l'utilisateur, celui-ci t'avais déjà posé des questions sur "
+    
+    # Ajout des questions précédentes
+    if len(previous_questions) == 1:
+        paragraph += f"{previous_questions[0]}. "
+    elif len(previous_questions) == 2:
+        paragraph += f"{previous_questions[0]} ainsi que {previous_questions[1]}. "
+    else:
+        *init, last = previous_questions
+        paragraph += ", ".join(init) + f", ainsi que {last}. "
+    
+    # Ajout du résumé des conversations
+    paragraph += "Les conversations vous ont amené à discuter de "
+    paragraph += " ".join(conversation_summary) + ". "
+    
+    # Ajout de la nouvelle question
+    paragraph += f"\n\nVoici maintenant une question à traiter proche de ces discussions : {question}"
+    
+    return paragraph
+
 
 def open_github(event):
     webbrowser.open_new("https://github.com/victorcarre6")

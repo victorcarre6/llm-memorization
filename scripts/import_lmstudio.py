@@ -4,6 +4,10 @@ import sqlite3
 import hashlib
 from keybert import KeyBERT
 from datetime import datetime
+import sklearn
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+import re
+
 
 # === CONFIGURATION ===
 DB_PATH = '/Users/victorcarre/Code/Projects/llm-memorization/datas/conversations.db'  # Chemin vers la base de données SQLite, à adapter à votre path
@@ -25,9 +29,35 @@ cur.execute('''
 conn.commit()
 
 # === EXTRACTION MOTS-CLÉS ===
-def extract_keywords(text, top_n=TOP_K):
-    keywords = kw_model.extract_keywords(text, keyphrase_ngram_range=(1, 2), stop_words='english', top_n=top_n)
-    return [kw for kw, _ in keywords]
+def extract_keywords(text, top_n=20):
+    """
+    Utilise KeyBERT pour extraire des mots-clés uniques sans stop words ni doublons.
+    """
+    raw_keywords = kw_model.extract_keywords(
+        text,
+        keyphrase_ngram_range=(1, 1),  # mots simples uniquement
+        stop_words='english',
+        top_n=top_n * 2  # marges pour filtrer ensuite
+    )
+
+    seen = set()
+    filtered_keywords = []
+
+    for kw, _ in raw_keywords:
+        kw_clean = kw.lower().strip()
+        if (
+            kw_clean not in seen and
+            kw_clean not in ENGLISH_STOP_WORDS and
+            len(kw_clean) > 2 and
+            re.match(r'^[a-zA-Z\-]+$', kw_clean)
+        ):
+            seen.add(kw_clean)
+            filtered_keywords.append(kw_clean)
+
+        if len(filtered_keywords) >= top_n:
+            break
+
+    return filtered_keywords
 
 # === INSÉRER CONVERSATION AVEC DÉDOUBLONNAGE ===
 def insert_conversation_if_new(user_input, llm_output):
