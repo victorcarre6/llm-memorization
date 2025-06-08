@@ -14,7 +14,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 TOP_K = 5
 
 # --- Connexion à la base ---
-DB_PATH = r'/Users/victorcarre/Code/ViKa/LLM memorization/SQL/conversations.db'
+DB_PATH = '/Users/victorcarre/Code/Projects/llm-memorization/datas/conversations.db'
 conn = sqlite3.connect(DB_PATH)
 cur = conn.cursor()
 
@@ -26,7 +26,7 @@ summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 
 def sync_conversations():
     try:
-        subprocess.run(["python3", "import_lmstudio.py"], check=True)
+        subprocess.run(["python3", "/Users/victorcarre/Code/Projects/llm-memorization/scripts/import_lmstudio.py"], check=True)
         status_label.config(text="Synchronisation terminée.")
     except subprocess.CalledProcessError:
         status_label.config(text="Erreur lors de la synchronisation.")

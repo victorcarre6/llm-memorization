@@ -6,7 +6,7 @@ from keybert import KeyBERT
 from datetime import datetime
 
 # === CONFIGURATION ===
-DB_PATH = 'conversations.db'
+DB_PATH = '/Users/victorcarre/Code/Projects/llm-memorization/datas/conversations.db'
 FOLDER_PATH = '/Users/victorcarre/.lmstudio/conversations'  # ← À modifier
 EXTENSIONS = ['.json']
 TOP_K = 5
