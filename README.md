@@ -1,7 +1,9 @@
 # LLM Memorization & Prompt Enhancer
 
 > Un projet pour indexer, historiser et rechercher les conversations avec un LLM local (utilisé via une librairie comme LM Studio) avec une base SQLite enrichie par des mots-clés extraits automatiquement.
+
 > Le projet est conçu pour fonctionner sans appel aux API externes, gardant la confidentialité des données.
+
 > L'idée est de fournir un contexte important et personnalisé lors du début d'une conversation avec un LLM, en ajoutant des informations passées lors du premier prompt de l'échange.
 
 ______
