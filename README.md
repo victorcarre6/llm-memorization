@@ -45,8 +45,11 @@ Le script `enhancer.py` :
 - Exécutable avec `prompt_enhancer.command`.
 
 Remarque : le LLM local utilisé pour le raccourcissement du contexte peut être téléchargé en amont avec le script `model_download.py` (1.2Gb). 
+
 Le choix du modèle `sshleifer/distilbart-cnn-12-6` été fait en prenant en compte sa taille, sa puissance, et ses besoins matériels (4 Go RAM libre nécessaire).
+
 Le but était de trouver un équilibre pour éviter d'avoir des requêtes avec un temps d'attente supérieur à une dizaine de secondes. 
+
 D'autres modèles moins lourds peuvent être utilisés au détriment de la rapidité, tel que `Falconsai/text_summarization` qui ne pèse que  ~250 Mb. Ce modèle peut être utilisé dans le  script `enhancer_light.py`, lancé avec `prompt_enhancer_light.command`.
 ______
 
@@ -80,8 +83,6 @@ python scripts/model_download.py
 ```
 
 5. Construction de l'arborescence
-
-Aucun changement d'arborescence n'est nécessaire si les scripts sont exécutés depuis le repository cloné, hormis la ligne 10 de `import_lmstudio.py`.
 
 Déplacer la base `conversations.db` depuis llm-memorization/datas/ vers le dossier désiré.
 Adapter les chemins suivants :
