@@ -27,9 +27,9 @@ summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
 def sync_conversations():
     try:
         subprocess.run(["python3", "/Users/victorcarre/Code/Projects/llm-memorization/scripts/import_lmstudio.py"], check=True)
-        status_label.config(text="Synchronisation terminée.")
+        label_status.config(text="Synchronisation terminée.")
     except subprocess.CalledProcessError:
-        status_label.config(text="Erreur lors de la synchronisation.")
+        label_status.config(text="Erreur lors de la synchronisation.")
 
 def extract_keywords(text, top_n=5):
     keywords = kw_model.extract_keywords(text, keyphrase_ngram_range=(1, 2), stop_words='english', top_n=top_n)
@@ -138,8 +138,7 @@ style.configure('TEntry',
 style.configure('TFrame', background='#323232')
 
 style.configure('Status.TLabel',
-                background='#f2f2f2',
-                foreground='#323232',
+                background='#323232',
                 font=('Segoe UI', 11))
 
 style.map('Green.TButton',
@@ -150,6 +149,8 @@ style.map('Green.TButton',
 ttk.Label(root, text="Poser la question :").pack(padx=10, pady=(10, 0))
 entry_question = ttk.Entry(root, width=80, style='TEntry')
 entry_question.pack(padx=10, pady=(0, 10))
+entry_question.bind("<Return>", lambda event: on_ask())
+
 
 # Boutons
 
