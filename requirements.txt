@@ -6,3 +6,4 @@ tk
 accelerate
 skikit-learn
 jq
+spacy
