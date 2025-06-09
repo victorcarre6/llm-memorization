@@ -1,0 +1,7 @@
+{
+  "lmstudio_folder_path": "~/.lmstudio/conversations",
+  "sync_script_path": "scripts/import_lmstudio.py",
+  "project_script_path": "scripts/enhancer_v5.py",
+  "db_path": "datas/conversations.db",
+  "venv_activate_path": "~/venvs/Jupyter/bin/activate"
+}

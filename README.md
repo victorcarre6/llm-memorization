@@ -83,20 +83,18 @@ pip install -r requirements.txt
 python scripts/model_download.py
 ```
 
-5. Construction de l'arborescence
+5. Arborescence
 
-Déplacer la base `conversations.db` depuis llm-memorization/datas/ vers le dossier désiré.
-Adapter les chemins suivants :
+Le fichier `config.json` à la racine du projet contient les chemins nécessaires au bon fonctionnement des scripts. 
+Il ressemble à ceci :
 
-- `SQL_memorization_base.ipynb`
- --> [Cellule 1] : db_path = '/chemin/relatif/vers/conversations.db'
-- `import_lmstudio.py` 
---> ligne 9 : DB_PATH = '/chemin/relatif/vers/conversations.db'
---> ligne 10 : FOLDER_PATH = '~/user/.lmstudio/conversations'  # Chemin vers les fichiers .json conversationnels, souvent dans les fichiers cachés
-- `enchancer.py`
---> ligne 17 : DB_PATH = '/chemin/relatif/vers/conversations.db'
---> ligne 29 : subprocess.run(["python3", "/chemin/relatif/vers/import_lmstudio.py"], check=True)
-
+```json
+{
+  "db_path": "datas/conversations.db",
+  "folder_path": "~/.lmstudio/conversations",
+  "import_script": "scripts/import_lmstudio.py"
+}
+```
 ______
 
 ## Lancement

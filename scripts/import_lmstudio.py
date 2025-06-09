@@ -2,16 +2,26 @@ import os
 import json
 import sqlite3
 import hashlib
-from keybert import KeyBERT
 from datetime import datetime
 import sklearn
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 import re
+import json
+from keybert import KeyBERT
 
+# --- Chargement de la configuration ---
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+with open(os.path.join(PROJECT_ROOT, "config.json")) as f:
+    raw_config = json.load(f)
+
+config = {
+    key: os.path.normpath(os.path.join(PROJECT_ROOT, value)) if isinstance(value, str) else value
+    for key, value in raw_config.items()
+}
 
 # === CONFIGURATION ===
-DB_PATH = '/Users/victorcarre/Code/Projects/llm-memorization/datas/conversations.db'  # Chemin vers la base de données SQLite, à adapter à votre path
-FOLDER_PATH = '/Users/victorcarre/.lmstudio/conversations'  # Chemin vers les fichiers .json conversationnels, à adapter à votre path
+DB_PATH = config["db_path"]
+FOLDER_PATH = config["lmstudio_folder_path"]
 EXTENSIONS = ['.json']
 TOP_K = 5
 

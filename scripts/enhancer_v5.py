@@ -3,6 +3,7 @@ import re
 import pyperclip
 import tkinter as tk
 import subprocess
+import json
 import sklearn
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from tkinter import scrolledtext, ttk
@@ -12,12 +13,28 @@ import os
 import webbrowser
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+# Chemin absolu vers le dossier racine du projet
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+config_path = os.path.join(PROJECT_ROOT, "config.json")
+with open(config_path, "r") as f:
+    raw_config = json.load(f)
+
+config = {}
+for key, value in raw_config.items():
+    if isinstance(value, str):
+        expanded = os.path.expanduser(value)
+        if not os.path.isabs(expanded):
+            expanded = os.path.normpath(os.path.join(PROJECT_ROOT, expanded))
+        config[key] = expanded
+    else:
+        config[key] = value
+
 # --- Constantes ---
 TOP_K = 5
 
 # --- Connexion à la base ---
-DB_PATH = '/Users/victorcarre/Code/Projects/llm-memorization/datas/conversations.db' # Chemin vers la base de données SQLite, à adapter à votre path
-conn = sqlite3.connect(DB_PATH)
+conn = sqlite3.connect(config["db_path"])
 cur = conn.cursor()
 
 # --- Initialisation des modèles ---
@@ -33,7 +50,13 @@ summarizer = pipeline(
 
 def sync_conversations():
     try:
-        subprocess.run(["python3", "/Users/victorcarre/Code/Projects/llm-memorization/scripts/import_lmstudio.py"], check=True)
+        global config
+        sync_path = config.get("sync_script_path")
+        if not sync_path:
+            label_status.config(text="sync_script_path introuvable.")
+            return
+
+        subprocess.run(["python3", config["sync_script_path"]], check=True)
         label_status.config(text="Synchronisation terminée.")
     except subprocess.CalledProcessError:
         label_status.config(text="Erreur lors de la synchronisation.")
@@ -279,7 +302,6 @@ def show_help():
     ok_button = tk.Button(help_window, text="Fermer", command=help_window.destroy)
     ok_button.pack(pady=10)
 
-
 # === INTERFACE TKINTER ===
 
 def on_ask():
@@ -357,8 +379,8 @@ style_config = {
     }
 }
 
-for style_name, config in style_config.items():
-    style.configure(style_name, **config)
+for style_name, app_config in style_config.items():
+    style.configure(style_name, **app_config)
 
 style.map('Green.TButton',
           background=[('active', '#457a3a'), ('pressed', '#2e4a20')],
