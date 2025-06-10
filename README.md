@@ -36,15 +36,16 @@ Chaque échange est :
 
 ### 2. Amélioration de prompts
 
-Le script `enhancer.py` :
+Le script `enhancer.py`, exécutable avec `prompt_enhancer.command` :
 
 - Pose la question initiale,  
 - Extrait les mots-clés correspondants,  
-- Récupère les couples questions/réponses similaires dans la base SQL,  
-- Résume les réponses avec un LLM local (sshleifer/distilbart-cnn-12-6),  
-- Colle dans le presse-papiers un prompt complet contenant les précédents échanges résumés comme contexte, en terminant avec la question initiale,
-- Offre une interface graphique avec pop-up d'aide,  
-- Exécutable avec `prompt_enhancer.command`.
+- Récupère les couples questions/réponses similaires dans la base SQLite,  
+- Résume les réponses avec un modèle local ([`moussaKam/barthez-orangesum-abstract`](https://huggingface.co/moussaKam/barthez-orangesum-abstract)),  
+- Colle dans le presse-papiers un prompt complet, contenant les précédents échanges résumés, en terminant avec la question initiale,
+- Offre une interface graphique avec :
+  - fenêtre d'aide,
+  - fenêtre d'analyse de données.
 ______
 
 Remarques : 
