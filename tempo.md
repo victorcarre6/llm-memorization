@@ -1,9 +1,77 @@
 
 Comment la photocatalyse rédox est actuellement appliquée en "drug discovery" du secteur pharmaceutique ?
+# remplacé par nouveau histogramme (à partir de all_keyword)
+
+
+    # Calcul des fréquences dans les contextes
+    full_text_context = " ".join(user_input + " " + llm_output for user_input, llm_output, _, _ in filtered_context).lower()
+    token_list = re.findall(r'\b[a-zA-Z\-]{3,}\b', full_text_context)
+
+    word_counts = {}
+    for kw, _, _ in keywords:
+        count = token_list.count(kw.lower())
+        word_counts[kw] = count
+
+
+    # --- Histogramme ---
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=100)
+    bars = ax.bar(word_counts.keys(), word_counts.values(), color='#599258')
+
+    ax.set_facecolor("#323232")
+    fig.patch.set_facecolor("#323232")
+    ax.set_title("Fréquence des mots-clés dans les contextes", color="white", fontsize=10)
+    ax.set_ylabel("Occurrences", color="white", fontsize=10)
+    ax.tick_params(axis='x', labelrotation=45, colors="white", labelsize=10)
+    ax.tick_params(axis='y', colors="white", labelsize=10)
+    for spine in ax.spines.values():
+        spine.set_color('white')
+
+    fig.tight_layout()
+
+    canvas = FigureCanvasTkAgg(fig, master=single_tab)
+    canvas.draw()
+    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=False, padx=10, pady=(10, 0))
 
 
 
-# Bouton pour étendre/cacher
+
+
+#
+
+def get_relevant_context(user_question, limit=None):
+    if limit is None:
+        limit = context_count_var.get()  # Récupération dynamique si pas de limite donnée
+    keywords = extract_keywords(user_question)
+    if not keywords:
+        return []
+    # Préparation de la requête SQL
+    placeholders = ', '.join(['?'] * len(keywords))
+    query = f'''
+        SELECT c.id, c.user_input, c.llm_output, c.timestamp, k.keyword
+        FROM conversations c
+        JOIN keywords k ON c.id = k.conversation_id
+        WHERE k.keyword IN ({placeholders})
+    '''
+
+
+    keyword_strings = [kw[0] for kw in keywords]
+    cur.execute(query, keyword_strings)
+    rows = cur.fetchall()
+    match_counts = {}
+    context_data = {}
+    for convo_id, user_input, llm_output, timestamp, keyword in rows:
+        if convo_id not in match_counts:
+            match_counts[convo_id] = set()
+            context_data[convo_id] = (user_input, llm_output, timestamp)
+        match_counts[convo_id].add(keyword)
+    scored_contexts = [(convo_id, len(matched_keywords)) for convo_id, matched_keywords in match_counts.items()] # Calcul du score (nombre de mots-clés distincts en commun)
+    sorted_contexts = sorted(scored_contexts, key=lambda x: x[1], reverse=True) # Tri décroissant par score
+    filtered_context = [context_data[convo_id] for convo_id, score in sorted_contexts[:limit]]  # Sélection des meilleurs résultats selon la limite
+    return filtered_context
+
+# Old
+
+## Bouton pour étendre/cacher
 toggle_btn = ttk.Button(
     output_frame,
     text="▼ Afficher les résultats",
@@ -19,9 +87,9 @@ toggle_btn = ttk.Button(
 toggle_btn.pack(fill=tk.X, pady=(0, 5))
 
 
-# === CONSTRUCTION DU PROMPT ===
+## === CONSTRUCTION DU PROMPT ===
 
-# Compression du contexte extrait
+### Compression du contexte extrait
 def summarize(text, focus_terms=None, max_length=1024):
     transformers_logging.set_verbosity_error()
     try:
@@ -46,7 +114,7 @@ def summarize(text, focus_terms=None, max_length=1024):
         print(f"Erreur summarization : {e}")
         return text[:max_length] + "... [résumé tronqué]"
     
-# Construction du prompt
+### Construction du prompt
 def generate_prompt_paragraph(context, question, target_tokens=1000):
     if not context:
         return f"{question}"

@@ -75,7 +75,7 @@ def extract_keywords(text, top_n=20):
 # === INSÉRER CONVERSATION AVEC DÉDOUBLONNAGE ===
 def insert_conversation_if_new(user_input, llm_output):
     combined = user_input + llm_output
-    hash_digest = hashlib.sha256(combined.encode('utf-8')).hexdigest()
+    hash_digest = hashlib.md5(combined.encode('utf-8')).hexdigest()
 
     cur.execute("SELECT 1 FROM hash_index WHERE hash = ?", (hash_digest,))
     if cur.fetchone():

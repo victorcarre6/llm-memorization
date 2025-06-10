@@ -181,33 +181,59 @@ def extract_keywords(text, top_n=None):
 
     return filtered_keywords
 
-# Requête SQL en fonction des mots-clés extraits
+# Récupération des anciennes conversations pertinentes
+
 def get_relevant_context(user_question, limit=None):
     if limit is None:
-        limit = context_count_var.get()  # Récupération dynamique si pas de limite donnée
+        limit = context_count_var.get()
+    
     keywords = extract_keywords(user_question)
     if not keywords:
         return []
+    
     placeholders = ', '.join(['?'] * len(keywords))
-    query = f'''
-        SELECT c.id, c.user_input, c.llm_output, c.timestamp, k.keyword
+    
+    # 1ère requête : récupérer conversations triées par nombre de mots-clés communs
+    query_contexts = f'''
+        SELECT c.id, c.user_input, c.llm_output, c.timestamp, COUNT(DISTINCT k.keyword) AS score
         FROM conversations c
         JOIN keywords k ON c.id = k.conversation_id
         WHERE k.keyword IN ({placeholders})
+        GROUP BY c.id
+        ORDER BY score DESC
+        LIMIT ?
     '''
     keyword_strings = [kw[0] for kw in keywords]
-    cur.execute(query, keyword_strings)
-    rows = cur.fetchall()
-    match_counts = {}
-    context_data = {}
-    for convo_id, user_input, llm_output, timestamp, keyword in rows:
-        if convo_id not in match_counts:
-            match_counts[convo_id] = set()
-            context_data[convo_id] = (user_input, llm_output, timestamp)
-        match_counts[convo_id].add(keyword)
-    scored_contexts = [(convo_id, len(matched_keywords)) for convo_id, matched_keywords in match_counts.items()] # Calcul du score (nombre de mots-clés distincts en commun)
-    sorted_contexts = sorted(scored_contexts, key=lambda x: x[1], reverse=True) # Tri décroissant par score
-    filtered_context = [context_data[convo_id] for convo_id, score in sorted_contexts[:limit]]  # Sélection des meilleurs résultats selon la limite
+    cur.execute(query_contexts, (*keyword_strings, limit))
+    context_rows = cur.fetchall()  # [(id, user_input, llm_output, timestamp, score), ...]
+    
+    if not context_rows:
+        return []
+    
+    # Extraire les IDs pour récupérer leurs mots-clés
+    convo_ids = [row[0] for row in context_rows]
+    placeholders_ids = ', '.join(['?'] * len(convo_ids))
+    
+    # 2ème requête : récupérer les mots-clés associés aux conversations sélectionnées
+    query_keywords = f'''
+        SELECT conversation_id, keyword
+        FROM keywords
+        WHERE conversation_id IN ({placeholders_ids})
+    '''
+    cur.execute(query_keywords, convo_ids)
+    keyword_rows = cur.fetchall()  # [(conversation_id, keyword), ...]
+    
+    # Organiser les mots-clés par conversation
+    keywords_by_convo = {}
+    for convo_id, keyword in keyword_rows:
+        keywords_by_convo.setdefault(convo_id, set()).add(keyword)
+    
+    # Construire le résultat final avec mots-clés inclus
+    filtered_context = []
+    for convo_id, user_input, llm_output, timestamp, score in context_rows:
+        kws = list(keywords_by_convo.get(convo_id, []))
+        filtered_context.append((user_input, llm_output, timestamp, kws))
+    
     return filtered_context
 
 # Nettoyage du texte
@@ -547,7 +573,7 @@ output_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 # Bouton pour étendre/cacher
 toggle_btn = ttk.Button(
     output_frame,
-    text="▼ Afficher les résultats",
+    text="▼ Afficher le résultat",
     command=toggle_output,
     style='Green.TButton'  # Utilise le même style que tes autres boutons
 )
@@ -576,12 +602,18 @@ def show_infos():
 
     question = entry_question.get("1.0", tk.END).strip()
     if not question:
-        update_status("⚠️ Posez une question d'abord pour accéder aux infos.", error=True)
-        info_window.destroy()
+        update_status("⚠️ Posez une question d'abord.", error=True)
         return
 
-    keywords = extract_keywords(question)  # [(kw, weight, freq), ...]
-    context = get_relevant_context(question)  # Liste de tuples (user_input, llm_output, timestamp)
+    keywords = extract_keywords(question)
+    if not keywords:
+        update_status("⚠️ Aucun mot-clé extrait.", error=True)
+        return
+
+    filtered_context = get_relevant_context(question, limit=5)
+    if not filtered_context:
+        update_status("⚠️ Aucun contexte trouvé.", error=True)
+        return
 
     notebook = ttk.Notebook(container, style="TNotebook")
     notebook.pack(fill="both", expand=True, padx=10, pady=10)
@@ -589,8 +621,8 @@ def show_infos():
     single_tab = ttk.Frame(notebook, style="TFrame")
     notebook.add(single_tab, text="Mots-clés & Stats")
 
-    # Calcul des fréquences dans les contextes
-    full_text_context = " ".join(user_input + " " + llm_output for user_input, llm_output, _ in context).lower()
+        # Calcul des fréquences dans les contextes
+    full_text_context = " ".join(user_input + " " + llm_output for user_input, llm_output, _, _ in filtered_context).lower()
     token_list = re.findall(r'\b[a-zA-Z\-]{3,}\b', full_text_context)
 
     word_counts = {}
@@ -625,7 +657,6 @@ def show_infos():
         tree.column(col, width=150)
     tree.pack(expand=False, fill='both', padx=10, pady=(10, 0))
 
-    # Alternance des lignes
     tree.tag_configure('oddrow', background='#2a2a2a')
     tree.tag_configure('evenrow', background='#383838')
 
@@ -634,7 +665,6 @@ def show_infos():
         tag = 'evenrow' if i % 2 == 0 else 'oddrow'
         tree.insert('', tk.END, values=(kw, f"{weight:.3f}", freq_in_context), tags=(tag,))
 
-    # --- Bouton copier ---
     btn_copy = ttk.Button(single_tab, text="Copier mots-clés", command=lambda: (
         root.clipboard_clear(),
         root.clipboard_append(",".join([kw for kw, _, _ in keywords])),
@@ -645,7 +675,6 @@ def show_infos():
     context_frame = ttk.Frame(notebook, style="TFrame")
     notebook.add(context_frame, text="Contextes")
 
-    # Utiliser Frame classique pour labels avec bg
     lbl_container = tk.Frame(context_frame, bg="#323232")
     lbl_container.pack(fill="both", expand=True)
 
@@ -654,17 +683,17 @@ def show_infos():
              text="Légende :\n- 1 mot clef : rouge\n- 2 ou 3 : orange\n- >3 : vert",
              fg="white", bg="#323232", justify="left", wraplength=700, font=("Segoe UI", 8, "italic")).pack(anchor="w", padx=10, pady=(0, 10))
 
-    for item in context:
+    for item in filtered_context:
         q_text = item[0]
-        extracted = extract_keywords(q_text)
-        shared = len(set(extracted) & set(keywords))
+        extracted = set(kw for kw, _, _ in extract_keywords(q_text))
+        base_keywords = set(kw for kw, _, _ in keywords)
+        shared = len(extracted & base_keywords)
         color = "#ff6b6b" if shared <= 1 else "#ffb347" if shared <= 3 else "#7CFC00"
         tk.Label(
             lbl_container,
             text=q_text[:100] + ("..." if len(q_text) > 100 else ""),
             fg=color, bg="#323232", wraplength=700
         ).pack(anchor="w", padx=10)
-
 
     # === Onglet 3 : Carte mentale ===
     mindmap_frame = ttk.Frame(notebook, style="TFrame")
@@ -673,9 +702,8 @@ def show_infos():
     canvas = tk.Canvas(mindmap_frame, bg="#323232", highlightthickness=0)
     canvas.pack(fill=tk.BOTH, expand=True)
 
-    # Préparer données pour carte mentale
-    questions_list = [item[0] for item in context]  # liste des questions contextuelles
-    keywords_per_question = [extract_keywords(q) for q in questions_list]
+    questions_list = [item[0] for item in filtered_context]
+    keywords_per_question = [set(kw for kw, _, _ in extract_keywords(q)) for q in questions_list]
 
     import math
     n = len(questions_list)
@@ -683,25 +711,22 @@ def show_infos():
     radius = 250
     nodes_positions = []
 
-    # Positionner les nœuds en cercle
     for i in range(n):
         angle = 2 * math.pi * i / n
         x = center_x + radius * math.cos(angle)
         y = center_y + radius * math.sin(angle)
         nodes_positions.append((x, y))
 
-    # Dessiner les liens entre nœuds
     for i in range(n):
-        for j in range(i+1, n):
-            if set(keywords_per_question[i]) & set(keywords_per_question[j]):
+        for j in range(i + 1, n):
+            if keywords_per_question[i] & keywords_per_question[j]:
                 x1, y1 = nodes_positions[i]
                 x2, y2 = nodes_positions[j]
                 canvas.create_line(x1, y1, x2, y2, fill="#7CFC00", width=1)
 
-    # Dessiner les nœuds (cercles)
     radius_node = 15
-
     _tooltip = None
+
     def show_tooltip(event, text):
         nonlocal _tooltip
         if _tooltip:
@@ -717,11 +742,9 @@ def show_infos():
             _tooltip = None
 
     for i, (x, y) in enumerate(nodes_positions):
-        node = canvas.create_oval(x-radius_node, y-radius_node, x+radius_node, y+radius_node, fill="#599258", outline="")
-        # Bind survol pour tooltip
+        node = canvas.create_oval(x - radius_node, y - radius_node, x + radius_node, y + radius_node, fill="#599258", outline="")
         canvas.tag_bind(node, "<Enter>", lambda e, q=questions_list[i]: show_tooltip(e, q))
         canvas.tag_bind(node, "<Leave>", hide_tooltip)
-
 
 # Barre de statut ET boutons - Frame horizontal unifié
 status_buttons_frame = ttk.Frame(main_frame, style='TFrame')
