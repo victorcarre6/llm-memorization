@@ -52,7 +52,7 @@ Remarques :
 
 - Le modèle utilisé pour le raccourcissement du contexte est situé dans `/model`.
 
-- Le choix du [modèle `moussaKam/barthez-orangesum-abstract`](https://huggingface.co/moussaKam/barthez-orangesum-abstract) été fait en prenant en compte sa taille, sa puissance, et ses besoins matériels (4 Go RAM libre nécessaire). L’objectif principal était de trouver un bon compromis afin d’éviter que les requêtes aient un temps d’attente supérieur à une dizaine de secondes. Ce modèle est multilingue, ce qui permet au script de fonctionner aussi bien avec des conversations en français qu’en anglais. 
+- Le choix du modèle [`moussaKam/barthez-orangesum-abstract`](https://huggingface.co/moussaKam/barthez-orangesum-abstract) été fait en prenant en compte sa taille, sa puissance, et ses besoins matériels (4 Go RAM libre nécessaire). L’objectif principal était de trouver un bon compromis afin d’éviter que les requêtes aient un temps d’attente supérieur à une dizaine de secondes. Ce modèle est multilingue, ce qui permet au script de fonctionner aussi bien avec des conversations en français qu’en anglais. 
 
 - Il est possible de changer le modèle utilisé en insérant un lien Hugging Face dans le fichier le `config.json`  sous le label `model`.
 
@@ -87,7 +87,7 @@ venv\Scripts\activate     # Windows
 pip install -r requirements.txt
 ```
 
-puis installer le modèle NLP `fr_core_news_lg`:
+- puis installer le modèle NLP `fr_core_news_lg`:
 
 ```bash
 python -m spacy download fr_core_news_lg
