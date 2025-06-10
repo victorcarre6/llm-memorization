@@ -199,4 +199,4 @@ cython_debug/
 .LSOverride
 
 # Spécifique à ce projet
-model/barthez-orangesum-abstract/model.safetensors
+model/barthez-orangesum-abstract/model.safetensorsmodel/barthez-orangesum-abstract/model.safetensors
