@@ -17,6 +17,8 @@ ______
 
 ## Fonctionnement
 
+![image](https://github.com/user-attachments/assets/1082167f-64ac-4143-a4ff-1c06b543c4c5)
+
 ### 1. Extraction des conversations
 
 Le script `import_lmstudio.py` explore le dossier de LM Studio, lit tous les `.json` de conversations et en extrait les paires `(question, réponse)`.
