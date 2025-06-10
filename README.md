@@ -48,6 +48,9 @@ Le script `enhancer.py`, exécutable avec `prompt_enhancer.command` :
 - Offre une interface graphique avec :
   - fenêtre d'aide,
   - fenêtre d'analyse de données.
+ 
+![image](https://github.com/user-attachments/assets/f4642160-550b-4eb9-a8c7-7078988a3360)
+
 ______
 
 ## Installation
