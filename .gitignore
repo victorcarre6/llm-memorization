@@ -197,3 +197,6 @@ cython_debug/
 .DS_Store
 .AppleDouble
 .LSOverride
+
+# Spécifique à ce projet
+model/barthez-orangesum-abstract/model.safetensors
