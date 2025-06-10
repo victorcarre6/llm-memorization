@@ -48,22 +48,6 @@ Le script `enhancer.py`, exécutable avec `prompt_enhancer.command` :
   - fenêtre d'analyse de données.
 ______
 
-Remarques : 
-
-- Le modèle utilisé pour le raccourcissement du contexte est situé dans `/model`.
-
-- Le choix du modèle [`moussaKam/barthez-orangesum-abstract`](https://huggingface.co/moussaKam/barthez-orangesum-abstract) été fait en prenant en compte sa taille, sa puissance, et ses besoins matériels (4 Go RAM libre nécessaire). L’objectif principal était de trouver un bon compromis afin d’éviter que les requêtes aient un temps d’attente supérieur à une dizaine de secondes. Ce modèle est multilingue, ce qui permet au script de fonctionner aussi bien avec des conversations en français qu’en anglais. 
-
-- Il est possible de changer le modèle utilisé en insérant un lien Hugging Face dans le fichier le `config.json`  sous le label `model`.
-
-- Le script applique un facteur multiplicateur (par défaut 2) au nombre de keyword extraits demandé, afin d’extraire plus de mots-clés bruts. Cela permet ensuite de filtrer et supprimer les mots-clés non pertinents, garantissant ainsi un nombre final suffisant et de qualité. Ce coefficiant est modifiable dans `config.json` sous le label `keyword_multiplier`.
-
-- Un dictionnaire de « stop-words » français est utilisé pour éliminer les mots-clés non pertinents (onjonctions de coordinations, prépositions, etc.).
-Le fichier `data/stopwords_fr.json` est modifiable si certains mots-clés présents dans la liste doivent être conservés ou retirés.
-Ce dictionnaire peut être remplacé par un fichier personnalisé, dans `config.json` sous le label `stopwords_file_path`.
-
-______
-
 ## Installation
 
 1. Cloner le repository
@@ -118,3 +102,15 @@ ______
 ## Remarque
 
 - Ces scripts sont fonctionnels avec LM Studio, mais devraient pouvoir être adapté à tout software mettant à disposition les conversations au format `.json`.
+
+- Le modèle utilisé pour le raccourcissement du contexte est situé dans `/model`.
+
+- Le choix du modèle [`moussaKam/barthez-orangesum-abstract`](https://huggingface.co/moussaKam/barthez-orangesum-abstract) été fait en prenant en compte sa taille, sa puissance, et ses besoins matériels (4 Go RAM libre nécessaire). L’objectif principal était de trouver un bon compromis afin d’éviter que les requêtes aient un temps d’attente supérieur à une dizaine de secondes. Ce modèle est multilingue, ce qui permet au script de fonctionner aussi bien avec des conversations en français qu’en anglais. 
+
+- Il est possible de changer le modèle utilisé en insérant un lien Hugging Face dans le fichier le `config.json`  sous le label `model`.
+
+- Le script applique un facteur multiplicateur (par défaut 2) au nombre de keyword extraits demandé, afin d’extraire plus de mots-clés bruts. Cela permet ensuite de filtrer et supprimer les mots-clés non pertinents, garantissant ainsi un nombre final suffisant et de qualité. Ce coefficiant est modifiable dans `config.json` sous le label `keyword_multiplier`.
+
+- Un dictionnaire de « stop-words » français est utilisé pour éliminer les mots-clés non pertinents (onjonctions de coordinations, prépositions, etc.).
+Le fichier `data/stopwords_fr.json` est modifiable si certains mots-clés présents dans la liste doivent être conservés ou retirés.
+Ce dictionnaire peut être remplacé par un fichier personnalisé, dans `config.json` sous le label `stopwords_file_path`.
