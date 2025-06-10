@@ -99,7 +99,7 @@ ______
 ```
 ______
 
-## Remarque
+## Remarques
 
 - Ces scripts sont fonctionnels avec LM Studio, mais devraient pouvoir être adapté à tout software mettant à disposition les conversations au format `.json`.
 
