@@ -14,8 +14,10 @@ ______
 - Amélioration de prompts en proposant un contexte adapté à la question posée en s'appuyant sur les échanges précédents.
 - Interface graphique tout-en-un.
   - Choix du nombre de mots-clefs et de contextes extraits avec des sliders.
-- Visualisation de données sur le prompt généré en fonction des mots clefs.
-- Visualisation de données sur la base de données de conversations.
+- Visualisation de données
+  - Informations sur le prompt généré en fonction des mots clefs.
+  - Informations sur la base de données de conversations (nuages de mots clefs, cartes mentales).
+    
 ______
 
 ## Fonctionnement
