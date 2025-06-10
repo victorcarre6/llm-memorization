@@ -95,9 +95,13 @@ python -m spacy download fr_core_news_lg
 
 4. Télécharger le modèle local
 
+  1. avec le script dédié : 
+
 ```bash
 python scripts/model_download.py
 ```
+
+  2. avec gitLFS (dans le dossier `model`)
 
 5. Arborescence
 
