@@ -13,6 +13,9 @@ ______
 - Automatisation de requêtes depuis la librairie de gestion conversationnelle de LLMs locaux (LM Studio, Transformer Labs, Ollama, ...) pour constituer une base de donnée SQLite.
 - Amélioration de prompts en proposant un contexte adapté à la question posée en s'appuyant sur les échanges précédents.
 - Interface graphique tout-en-un.
+  - Choix du nombre de mots-clefs et de contextes extraits avec des sliders.
+- Visualisation de données sur le prompt généré en fonction des mots clefs.
+- Visualisation de données sur la base de données de conversations.
 ______
 
 ## Fonctionnement
