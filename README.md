@@ -87,7 +87,7 @@ venv\Scripts\activate     # Windows
 pip install -r requirements.txt
 ```
 
-- puis installer le modèle NLP `fr_core_news_lg`:
+  - puis installer le modèle NLP `fr_core_news_lg`:
 
 ```bash
 python -m spacy download fr_core_news_lg
@@ -95,12 +95,12 @@ python -m spacy download fr_core_news_lg
 
 4. Télécharger le modèle local
 
-- avec le script dédié : 
+  - avec le script dédié : 
 
 ```bash
 python scripts/model_download.py
 ```
-- ou avec GitLFS (dans le dossier `model`)
+  - ou avec GitLFS (dans le dossier `model`)
 
 5. Arborescence
 
