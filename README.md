@@ -111,7 +111,7 @@ ______
 ## Lancement
 
 ```bash
-./prompt_enhancer_tkinter.command
+./llm_memorization.command
 ```
 ______
 
