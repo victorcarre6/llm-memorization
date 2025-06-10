@@ -1,10 +1,16 @@
 transformers
 keybert
-pyperclip
-torch
-tk
-accelerate
-skikit-learn
-jq
 spacy
-wordcloud
+torch
+scikit-learn
+accelerate
+matplotlib
+tkinter
+pyperclip
+jq
+ipython
+jupyter
+ipykernel
+setuptools
+wheel
+pip --upgrade

@@ -1,8 +1,10 @@
 {
+  "venv_activate_path": ".venv/bin/activate",
   "lmstudio_folder_path": "~/.lmstudio/conversations",
   "sync_script_path": "scripts/import_lmstudio.py",
   "project_script_path": "scripts/enhancer.py",
   "db_path": "datas/conversations.db",
-  "venv_activate_path": "~/venvs/Jupyter/bin/activate",
-  "stopwords_file_path": "datas/stopwords_fr.json"
+  "stopwords_file_path": "datas/stopwords_fr.json",
+  "summarizing_model": "model/barthez-orangesum-abstract",
+  "keyword_multiplier": 2
 }

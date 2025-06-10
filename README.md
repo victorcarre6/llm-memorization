@@ -45,18 +45,25 @@ Le script `enhancer.py` :
 - Exécutable avec `prompt_enhancer.command`.
 ______
 
-Remarque : le LLM local utilisé pour le raccourcissement du contexte peut être téléchargé en amont avec le script `model_download.py` (1.2Gb). 
+Remarques : 
 
-Le choix du modèle `sshleifer/distilbart-cnn-12-6` été fait en prenant en compte sa taille, sa puissance, et ses besoins matériels (4 Go RAM libre nécessaire).
+- Le modèle utilisé pour le raccourcissement du contexte est situé dans `/model`.
 
-Le but était de trouver un équilibre pour éviter d'avoir des requêtes avec un temps d'attente supérieur à une dizaine de secondes. 
+- Le choix du [modèle `moussaKam/barthez-orangesum-abstract`](https://huggingface.co/moussaKam/barthez-orangesum-abstract) été fait en prenant en compte sa taille, sa puissance, et ses besoins matériels (4 Go RAM libre nécessaire). L’objectif principal était de trouver un bon compromis afin d’éviter que les requêtes aient un temps d’attente supérieur à une dizaine de secondes. Ce modèle est multilingue, ce qui permet au script de fonctionner aussi bien avec des conversations en français qu’en anglais. 
 
-D'autres modèles moins lourds peuvent être utilisés au détriment de la rapidité, tel que `Falconsai/text_summarization` qui ne pèse que  ~250 Mb. Ce modèle peut être utilisé dans le  script `enhancer_light.py`, lancé avec `prompt_enhancer_light.command`.
+- Il est possible de changer le modèle utilisé en insérant un lien Hugging Face dans le fichier le `config.json`  sous le label `model`.
+
+- Le script applique un facteur multiplicateur (par défaut 2) au nombre de keyword extraits demandé, afin d’extraire plus de mots-clés bruts. Cela permet ensuite de filtrer et supprimer les mots-clés non pertinents, garantissant ainsi un nombre final suffisant et de qualité. Ce coefficiant est modifiable dans `config.json` sous le label `keyword_multiplier`.
+
+- Un dictionnaire de « stop-words » français est utilisé pour éliminer les mots-clés non pertinents (onjonctions de coordinations, prépositions, etc.).
+Le fichier `data/stopwords_fr.json` est modifiable si certains mots-clés présents dans la liste doivent être conservés ou retirés.
+Ce dictionnaire peut être remplacé par un fichier personnalisé, dans `config.json` sous le label `stopwords_file_path`.
+
 ______
 
 ## Installation
 
-1. **Cloner le repo :**
+1. Cloner le repository
 
 ```bash
 git clone https://github.com/victorcarre6/llm-memorization
@@ -77,6 +84,12 @@ venv\Scripts\activate     # Windows
 pip install -r requirements.txt
 ```
 
+puis installer le modèle NLP `fr_core_news_lg`:
+
+```bash
+python -m spacy download fr_core_news_lg
+```
+
 4. Télécharger le modèle local
 
 ```bash
@@ -86,15 +99,7 @@ python scripts/model_download.py
 5. Arborescence
 
 Le fichier `config.json` à la racine du projet contient les chemins nécessaires au bon fonctionnement des scripts. 
-Il ressemble à ceci :
 
-```json
-{
-  "db_path": "datas/conversations.db",
-  "folder_path": "~/.lmstudio/conversations",
-  "import_script": "scripts/import_lmstudio.py"
-}
-```
 ______
 
 ## Lancement

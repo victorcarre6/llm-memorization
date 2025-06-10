@@ -9,28 +9,32 @@ import re
 import json
 from keybert import KeyBERT
 
+# === INITIALISATION ===
+
 # --- Chargement de la configuration ---
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 with open(os.path.join(PROJECT_ROOT, "config.json")) as f:
     raw_config = json.load(f)
-
 config = {
     key: os.path.normpath(os.path.join(PROJECT_ROOT, value)) if isinstance(value, str) else value
     for key, value in raw_config.items()
 }
 
-# === CONFIGURATION ===
+stopwords_path = config.get("stopwords_file_path", "stopwords_fr.json")
+with open(stopwords_path, "r", encoding="utf-8") as f:
+    french_stopwords = set(json.load(f))
+
 DB_PATH = config["db_path"]
 FOLDER_PATH = config["lmstudio_folder_path"]
 EXTENSIONS = ['.json']
 TOP_K = 5
 
-# === INITIALISATIONS ===
+# === Modèle et connection à la base ===
 kw_model = KeyBERT()
 conn = sqlite3.connect(DB_PATH)
 cur = conn.cursor()
 
-# === TABLES SI BESOIN ===
+# Créaction de la table si elle n'existe pas
 cur.execute('''
     CREATE TABLE IF NOT EXISTS hash_index (
         hash TEXT PRIMARY KEY
@@ -39,14 +43,13 @@ cur.execute('''
 conn.commit()
 
 # === EXTRACTION MOTS-CLÉS ===
+combined_stopwords = ENGLISH_STOP_WORDS.union(french_stopwords)
+
 def extract_keywords(text, top_n=20):
-    """
-    Utilise KeyBERT pour extraire des mots-clés uniques sans stop words ni doublons.
-    """
     raw_keywords = kw_model.extract_keywords(
         text,
         keyphrase_ngram_range=(1, 1),  # mots simples uniquement
-        stop_words='english',
+        stop_words=list(combined_stopwords),
         top_n=top_n * 2  # marges pour filtrer ensuite
     )
 
@@ -57,7 +60,7 @@ def extract_keywords(text, top_n=20):
         kw_clean = kw.lower().strip()
         if (
             kw_clean not in seen and
-            kw_clean not in ENGLISH_STOP_WORDS and
+            kw_clean not in combined_stopwords and
             len(kw_clean) > 2 and
             re.match(r'^[a-zA-Z\-]+$', kw_clean)
         ):
@@ -110,13 +113,11 @@ def parse_lmstudio_file(filepath: str) -> list[tuple[str, str]]:
         selected_version = versions[message.get("currentlySelected", 0)]
         role = selected_version.get("role")
 
-        # Pour les questions de l'utilisateur
         if role == "user":
             parts = selected_version.get("content", [])
             texts = [p.get("text", "") for p in parts if p.get("type") == "text"]
             current_question = "\n".join(texts).strip()
 
-        # Pour les réponses de l'assistant
         elif role == "assistant" and current_question:
             steps = selected_version.get("steps", [])
             response_parts = []
@@ -128,11 +129,9 @@ def parse_lmstudio_file(filepath: str) -> list[tuple[str, str]]:
             llm_response = "\n".join(response_parts).strip()
             if llm_response:
                 pairs.append((current_question, llm_response))
-                current_question = None  # reset pour le prochain échange
+                current_question = None
 
     return pairs
-
-
 
 # === PARCOURS DU DOSSIER ===
 def import_all():

@@ -1,49 +1,79 @@
-import sqlite3
-import re
-import pyperclip
-import tkinter as tk
-import subprocess
-import json
-import sklearn
-import matplotlib.pyplot as plt
-from wordcloud import WordCloud
-from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
-from tkinter import scrolledtext, ttk, Canvas
-from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
-from keybert import KeyBERT
-from collections import Counter
 import os
+import re
+import json
+import sqlite3
+import subprocess
 import webbrowser
+from collections import Counter
+import tkinter as tk
+from tkinter import scrolledtext, ttk, Canvas
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.pyplot as plt
 import spacy
 import torch
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
+import heapq
+import sklearn
+import logging
+import warnings
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import logging as transformers_logging
+from keybert import KeyBERT
+import pyperclip
 
 # === INITIALISATION ===
 
-# Chemin absolu vers le dossier racine du projet
+# Chargement des variables de configuration
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 config_path = os.path.join(PROJECT_ROOT, "config.json")
-with open(config_path, "r") as f:
-    raw_config = json.load(f)
 
-# Chargement de la config
-config = {}
-for key, value in raw_config.items():
-    if isinstance(value, str):
-        expanded = os.path.expanduser(value)
-        if not os.path.isabs(expanded):
-            expanded = os.path.normpath(os.path.join(PROJECT_ROOT, expanded))
-        config[key] = expanded
-    else:
-        config[key] = value
+def expand_path(value):
+    expanded = os.path.expanduser(value)
+    if not os.path.isabs(expanded):
+        expanded = os.path.normpath(os.path.join(PROJECT_ROOT, expanded))
+    return expanded
+
+def load_config(config_path):
+    with open(config_path, "r", encoding="utf-8") as f:
+        raw_config = json.load(f)
+
+    path_keys = {
+        "venv_activate_path",
+        "lmstudio_folder_path",
+        "sync_script_path",
+        "project_script_path",
+        "db_path",
+        "stopwords_file_path"
+    }
+
+    config = {}
+    for key, value in raw_config.items():
+        if isinstance(value, str):
+            if key == "summarizing_model" and value == "model/barthez-orangesum-abstract":
+                config[key] = expand_path(value)
+            elif key in path_keys:
+                config[key] = expand_path(value)
+            else:
+                config[key] = value
+        else:
+            config[key] = value
+    return config
+
+config = load_config(config_path)
+
 stopwords_path = config.get("stopwords_file_path", "stopwords_fr.json")
 with open(stopwords_path, "r", encoding="utf-8") as f:
     french_stop_words = set(json.load(f))
 
-# Modèles
+combined_stopwords = ENGLISH_STOP_WORDS.union(french_stop_words)
 
-summarizing_model = "moussaKam/barthez-orangesum-abstract"
+# Masquage des avertissements
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("torch").setLevel(logging.ERROR)
+torch._C._log_api_usage_once = lambda *args, **kwargs: None
+warnings.filterwarnings("ignore", message="Unfeasible length constraints", category=UserWarning, module="transformers.generation.utils")
 
 # Connexion à la base SQLite
 conn = sqlite3.connect(config["db_path"])
@@ -52,33 +82,40 @@ cur = conn.cursor()
 # Initialisation des modèles
 nlp = spacy.load("fr_core_news_lg")
 kw_model = KeyBERT()
-model = AutoModelForSeq2SeqLM.from_pretrained(summarizing_model)
-tokenizer = AutoTokenizer.from_pretrained(summarizing_model)
-summarizer = pipeline(
-    task="summarization",
-    model=model,
-    tokenizer=tokenizer,
-    framework="pt"
-)
+summarizing_model = config.get("summarizing_model", "model/barthez-orangesum-abstract")
+summarizing_pipeline = pipeline(task="summarization", model=summarizing_model, framework="pt")
 
 # === FONCTIONS PRINCIPALES ===
 
-# Pércuteur
+# Synchronisation des conversations
+def sync_conversations(config, label_status):
+    sync_path = config.get("sync_script_path")
+    if not sync_path:
+        label_status.config(text="sync_script_path introuvable.")
+        return False
+    try:
+        subprocess.run(["python3", sync_path], check=True)
+        label_status.config(text="Synchronisation terminée.")
+        return True
+    except subprocess.CalledProcessError:
+        label_status.config(text="Erreur lors de la synchronisation.")
+        return False
+    except FileNotFoundError:
+        label_status.config(text="Script de synchronisation introuvable.")
+        return False
 
+# Pércuteur
 def on_ask():
     question = entry_question.get("1.0", "end-1c")
     if not question.strip():
         update_status("⚠️ Merci de saisir une question.", error=True)
         return
-    
-    update_status("Traitement en cours...")
+    update_status("⚙️ Traitement en cours...")
     root.update()
-
     try:
         context = get_relevant_context(question, limit=context_count_var.get()) #", limit=context_count_var.get()" ajoutée slider contexte
         prompt = generate_prompt_paragraph(context, question)
         pyperclip.copy(prompt)
-
         text_output.delete('1.0', tk.END)
         text_output.insert(tk.END, prompt)
         
@@ -90,42 +127,16 @@ def on_ask():
             f"Prompt généré ({token_count} tokens) | Contexte utilisé : {context_count} éléments",
             success=True
         )
-        
     except Exception as e:
-        update_status(f"Erreur : {str(e)}", error=True)
+        update_status(f"❌ Erreur : {str(e)}", error=True)
 
-def update_status(message, error=False, success=False):
-    """Met à jour le label de statut avec style approprié"""
-    label_status.config(text=message)
-    if error:
-        label_status.config(foreground='#ff6b6b')
-    elif success:
-        label_status.config(foreground='#599258')
-    else:
-        label_status.config(foreground='white')
-
-# Synchronisation des conversations
-def sync_conversations():
-    try:
-        global config
-        sync_path = config.get("sync_script_path")
-        if not sync_path:
-            label_status.config(text="sync_script_path introuvable.")
-            return
-
-        subprocess.run(["python3", config["sync_script_path"]], check=True)
-        label_status.config(text="Synchronisation terminée.")
-    except subprocess.CalledProcessError:
-        label_status.config(text="Erreur lors de la synchronisation.")
-
-
-# === RÉCUPÉRATION DU CONTEXTE ===
+# === CONTEXTE ===
 
 # Récupération des mots-clés de la question initiale
-
 root = tk.Tk()
-keyword_count_var = tk.IntVar(value=5)  # Valeur par défaut
-context_count_var = tk.IntVar(value=3)  # Valeur par défaut du nombre de contextes
+keyword_count_var = tk.IntVar(value=5)
+context_count_var = tk.IntVar(value=3)
+multiplier = config.get("keyword_multiplier", 2)
 
 def extract_keywords(text, top_n=None):
     if top_n is None:
@@ -134,38 +145,39 @@ def extract_keywords(text, top_n=None):
     # Extraction brute avec KeyBERT
     raw_keywords = kw_model.extract_keywords(
         text,
-        keyphrase_ngram_range=(1, 1),  # mots uniques uniquement
-        stop_words='english',
-        top_n=top_n * 2  # extraire plus pour filtrer ensuite
-    )
+        keyphrase_ngram_range=(1, 1),
+        stop_words=list(combined_stopwords),
+        top_n=top_n * multiplier)
+
+    stopwords_set = set(combined_stopwords)
 
     tokens = re.findall(r'\b[a-zA-Z\-]{3,}\b', text.lower())
-    token_freq = Counter([tok for tok in tokens if tok not in french_stop_words])
+    token_freq = Counter([tok for tok in tokens if tok not in stopwords_set])
 
-    # Tri par fréquence dans le texte #  /!\ peu entrainer des doublons /!\
-    raw_keywords_sorted = sorted(
-        raw_keywords,
-        key=lambda x: token_freq.get(x[0].lower(), 0),
-        reverse=True
-    )
+    # Fonction de validation rapide des mots clés
+    def is_valid_kw(kw):
+        return (
+            kw not in stopwords_set and
+            len(kw) > 2 and
+            kw.isalpha() or '-' in kw
+        )
+
+    # Tri par fréquence dans le texte #  /!\ ==peu entrainer des doublons== /!\
+    filtered_raw = []
+    for kw, weight in raw_keywords:
+        kw_clean = kw.lower().strip()
+        if is_valid_kw(kw_clean):
+            freq = token_freq.get(kw_clean, 0)
+            filtered_raw.append((freq, kw_clean, weight))
+
+    top_filtered = heapq.nlargest(top_n, filtered_raw, key=lambda x: x[0])
 
     seen = set()
     filtered_keywords = []
-
-    for kw, weight in raw_keywords_sorted:
-        kw_clean = kw.lower().strip()
-        if (
-            kw_clean not in seen and
-            kw_clean not in french_stop_words and
-            len(kw_clean) > 2 and
-            re.match(r'^[a-zA-Z\-]+$', kw_clean)
-        ):
+    for freq, kw_clean, weight in top_filtered:
+        if kw_clean not in seen:
             seen.add(kw_clean)
-            freq = token_freq.get(kw_clean, 0)
             filtered_keywords.append((kw_clean, weight, freq))
-
-        if len(filtered_keywords) >= top_n:
-            break
 
     return filtered_keywords
 
@@ -173,14 +185,9 @@ def extract_keywords(text, top_n=None):
 def get_relevant_context(user_question, limit=None):
     if limit is None:
         limit = context_count_var.get()  # Récupération dynamique si pas de limite donnée
-    
     keywords = extract_keywords(user_question)
-    print(f"Mots-clés extraits de la question : {keywords}")
     if not keywords:
-        # Pas de mots-clés extraits, on retourne une liste vide
         return []
-
-    # Préparation de la requête SQL avec placeholders pour les mots-clés
     placeholders = ', '.join(['?'] * len(keywords))
     query = f'''
         SELECT c.id, c.user_input, c.llm_output, c.timestamp, k.keyword
@@ -188,44 +195,31 @@ def get_relevant_context(user_question, limit=None):
         JOIN keywords k ON c.id = k.conversation_id
         WHERE k.keyword IN ({placeholders})
     '''
-    keyword_strings = [kw[0] for kw in keywords]  # extraire juste les mots
+    keyword_strings = [kw[0] for kw in keywords]
     cur.execute(query, keyword_strings)
     rows = cur.fetchall()
-
-    # Dictionnaires pour compter les mots-clés en commun par conversation
     match_counts = {}
     context_data = {}
-
     for convo_id, user_input, llm_output, timestamp, keyword in rows:
         if convo_id not in match_counts:
             match_counts[convo_id] = set()
             context_data[convo_id] = (user_input, llm_output, timestamp)
         match_counts[convo_id].add(keyword)
-
-    scored_contexts = [(convo_id, len(matched_keywords)) for convo_id, matched_keywords in match_counts.items()] # Calcul du score = nombre de mots-clés distincts en commun
-    sorted_contexts = sorted(scored_contexts, key=lambda x: x[1], reverse=True) # Tri décroissant par score (nombre de mots-clés communs)
+    scored_contexts = [(convo_id, len(matched_keywords)) for convo_id, matched_keywords in match_counts.items()] # Calcul du score (nombre de mots-clés distincts en commun)
+    sorted_contexts = sorted(scored_contexts, key=lambda x: x[1], reverse=True) # Tri décroissant par score
     filtered_context = [context_data[convo_id] for convo_id, score in sorted_contexts[:limit]]  # Sélection des meilleurs résultats selon la limite
-
     return filtered_context
 
-
-# === FONCTION UTILITAIRE NLP  ===
-
+# Nettoyage du texte
 def nlp_clean_text(text, max_chunk_size=500):
-    # Suppression des blocs de code
+
     text = re.sub(r'```(?:python)?\s*.*?```', '', text, flags=re.DOTALL)
+    chunks, current_chunk, current_length = [], [], 0
 
-    # Analyse NLP
-    doc = nlp(text)
-    chunks = []
-    current_chunk = []
-    current_length = 0
-
-    for sent in doc.sents:
+    for sent in nlp(text).sents:
         s = sent.text.strip()
         if len(s) < 20:
-            continue  # ignore phrases trop courtes
-
+            continue
         if current_length + len(s) < max_chunk_size:
             current_chunk.append(s)
             current_length += len(s)
@@ -233,7 +227,6 @@ def nlp_clean_text(text, max_chunk_size=500):
             chunks.append(" ".join(current_chunk))
             current_chunk = [s]
             current_length = len(s)
-
     if current_chunk:
         chunks.append(" ".join(current_chunk))
 
@@ -241,8 +234,9 @@ def nlp_clean_text(text, max_chunk_size=500):
 
 # === CONSTRUCTION DU PROMPT ===
 
-# Compression primaire du contexte extrait
+# Compression du contexte extrait
 def summarize(text, focus_terms=None, max_length=1024):
+    transformers_logging.set_verbosity_error()
     try:
         # Filtrage des phrases importantes si focus_terms donné
         if focus_terms:
@@ -251,7 +245,7 @@ def summarize(text, focus_terms=None, max_length=1024):
             text = '. '.join(sentences)[:2000] or text[:2000]
 
         # Résumé avec le texte filtré
-        result = summarizer(
+        result = summarizing_pipeline(
             text,
             max_length=max_length,
             min_length=max_length // 2,
@@ -266,13 +260,11 @@ def summarize(text, focus_terms=None, max_length=1024):
         return text[:max_length] + "... [résumé tronqué]"
     
 # Construction du prompt
-
 def generate_prompt_paragraph(context, question, target_tokens=1000):
-    question_keywords = extract_keywords(question) #KBogus enlevé "", top_n=keyword_count_var.get()" de la parenthèse
     if not context:
-        return f"Voici une nouvelle question à traiter : {question}"
+        return f"{question}"
 
-    # 1. Prétraitement intelligent du contexte
+    # 1. Prétraitement
     processed_items = []
     for item in context[:3]:  # Nombre max d'éléments dans le contexte
         try:
@@ -281,21 +273,19 @@ def generate_prompt_paragraph(context, question, target_tokens=1000):
             llm_output = str(item[1])
             keyword = str(item[5]) if len(item) > 5 and str(item[3]).strip() not in {"", "none", "null", "1", "2", "3"} else None
 
-            # Summarization avec gestion de la longueur
-            summary = summarize(text=llm_output)
-
-            # Nettoyage et segmentation du texte via nlp_clean_text
-            print(f"Avant segmentation : {len(summary.split())} mots")
-            cleaned_summary = nlp_clean_text(summary)
+            # Summarization, netooyage, segmentation
+            summary = nlp_clean_text(summarize(llm_output))
             processed_items.append({
                 'question': user_input,
-                'summary': cleaned_summary,
-                'keyword': keyword.lower().strip() if keyword else None
+                'summary': summary,
+                'keyword': keyword if keyword else None
             })
-
         except Exception as e:
             print(f"Erreur traitement item : {e}")
             continue
+
+    if not processed_items:
+        return question
 
     # 2. Construction du prompt
     parts = []
@@ -304,10 +294,10 @@ def generate_prompt_paragraph(context, question, target_tokens=1000):
     if processed_items:
         questions = [f"'{item['question']}'" for item in processed_items]
         if len(questions) == 1:
-            parts.append(f"Question précédente : {questions[0]}")
+            parts.append(f"Tes discussions avec l'utilisateur t'ont amené à répondre à cette question : {questions[0]}")
         else:
             *init, last = questions
-            parts.append(f"Questions antérieures : {', '.join(init)}, et enfin {last}")
+            parts.append(f"Tes discussions avec l'utilisateur t'ont amené à répondre à ces questions :  {', '.join(init)}, et enfin {last}")
 
     # Partie mots-clés
     keywords = {item['keyword'] for item in processed_items if item['keyword']}
@@ -317,14 +307,24 @@ def generate_prompt_paragraph(context, question, target_tokens=1000):
     # Partie résumés
     if processed_items:
         summaries = [f"- {item['summary']}" for item in processed_items]
-        parts.append("Contexte pertinent :\n" + "\n".join(summaries))
+        parts.append("Ces intéractions vous ont amené à discuter de ces sujets :\n" + "\n".join(summaries))
 
     # Question actuelle
-    parts.append(f"\nQuestion à traiter : {question}")
+    parts.append(f"Réponds maintenant à cette question, dans le contexte de vos discussions précédentes : {question}")
 
     return "\n".join(parts)
 
 # === INTERFACE TKINTER ===
+
+def update_status(message, error=False, success=False):
+    """Met à jour le label de statut avec style approprié"""
+    label_status.config(text=message)
+    if error:
+        label_status.config(foreground='#ff6b6b')
+    elif success:
+        label_status.config(foreground='#599258')
+    else:
+        label_status.config(foreground='white')
 
 def open_github(event):
     webbrowser.open_new("https://github.com/victorcarre6")
@@ -352,7 +352,7 @@ def show_help():
 
 # === CONFIGURATION DE L'INTERFACE ===
 root.title("LLM Memorization and Prompt Enhancer")
-root.geometry("1000x750")
+root.geometry("1000x325")
 root.configure(bg="#323232")
 
 # Style global unique
@@ -365,7 +365,7 @@ style_config = {
         'background': '#599258',
         'foreground': 'white',
         'font': ('Segoe UI', 11),
-        'padding': 6
+        'padding': 4
     },
     'Bottom.TButton': {
         'background': '#599258',
@@ -421,7 +421,6 @@ style_config = {
     }
 }
 
-
 for style_name, app_config in style_config.items():
     style.configure(style_name, **app_config)
 
@@ -434,17 +433,21 @@ style.map("TNotebook.Tab",
           foreground=[("selected", "white"), ("active", "white")])
 
 
+style.map('Bottom.TButton',
+          background=[('active', '#457a3a'), ('pressed', '#2e4a20')],
+          foreground=[('disabled', '#d9d9d9')])
+
 # Widgets principaux
 main_frame = ttk.Frame(root, style='TFrame')
 main_frame.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
 
 # Section question - Centrée
 question_header = ttk.Frame(main_frame, style='TFrame')
-question_header.pack(fill='x', pady=(0, 5))
+question_header.pack(fill='x', pady=(0, 1))
 ttk.Label(question_header, text="Poser la question :").pack(expand=True)
 
 question_frame = tk.Frame(main_frame, bg="#323232")
-question_frame.pack(pady=(0, 10), fill='x', expand=True)
+question_frame.pack(pady=(0, 5), fill='x', expand=True)
 
 entry_question = tk.Text(question_frame, height=4, width=80, wrap="word", font=('Segoe UI', 11))
 entry_question.pack(side="left", fill="both", expand=True)
@@ -473,9 +476,9 @@ entry_question.bind("<Return>", lambda event: on_ask())
 
 # Frame horizontale principale
 control_frame = ttk.Frame(main_frame, style='TFrame')
-control_frame.pack(fill='x', pady=(0, 15), padx=5)
+control_frame.pack(fill='x', pady=(0, 10), padx=5)
 
-# Colonne 1 : slider mots-clés
+# Sliders
 slider_keywords_frame = ttk.Frame(control_frame, style='TFrame')
 slider_keywords_frame.grid(row=0, column=0, sticky='w')
 
@@ -493,7 +496,6 @@ slider_keywords = ttk.Scale(
 )
 slider_keywords.pack(anchor='w')
 
-# Colonne 2 : slider contextes + label dynamique au-dessus
 slider_context_frame = ttk.Frame(control_frame, style='TFrame')
 slider_context_frame.grid(row=0, column=1, padx=20, sticky='w')
 
@@ -511,8 +513,7 @@ slider_contexts = ttk.Scale(
 )
 slider_contexts.pack(anchor='w')
 
-
-# Colonne 3 : boutons alignés à droite
+# Boutons synchronisation et percuteur
 button_frame = ttk.Frame(control_frame, style='TFrame')
 button_frame.grid(row=0, column=2, sticky='e')
 
@@ -524,9 +525,33 @@ btn_ask = ttk.Button(button_frame, text="Générer prompt", command=on_ask, styl
 btn_ask.pack(side='left', padx=5)
 control_frame.grid_columnconfigure(2, weight=1)
 
-# Zone de sortie
+# Zone de sortie étendable
+output_expanded = tk.BooleanVar(value=False)
+
+def toggle_output():
+    """Basculer l'affichage de la zone de sortie et ajuster la taille de la fenêtre"""
+    if output_expanded.get():
+        text_output.pack_forget()
+        toggle_btn.config(text="▼ Afficher le résultat")
+        output_expanded.set(False)
+        root.geometry("1000x325")
+    else:
+        text_output.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
+        toggle_btn.config(text="▲ Masquer le résultat")
+        output_expanded.set(True)
+        root.geometry("1000x750")
+
 output_frame = ttk.Frame(main_frame, style='TFrame')
 output_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+# Bouton pour étendre/cacher
+toggle_btn = ttk.Button(
+    output_frame,
+    text="▼ Afficher les résultats",
+    command=toggle_output,
+    style='Green.TButton'  # Utilise le même style que tes autres boutons
+)
+toggle_btn.pack(fill=tk.X, pady=(0, 5))
 
 text_output = scrolledtext.ScrolledText(
     output_frame, 
@@ -538,28 +563,11 @@ text_output = scrolledtext.ScrolledText(
     fg="black", 
     insertbackground="black"
 )
-text_output.pack(fill=tk.BOTH, expand=True)
-
-# Barre de statut
-status_frame = ttk.Frame(main_frame, style='TFrame')
-status_frame.pack(fill=tk.X, pady=(0, 5))
-
-label_status = ttk.Label(
-    status_frame, 
-    text="Prêt", 
-    style='Status.TLabel',
-    foreground='white',
-    anchor='center',
-    justify='center',
-    wraplength=650
-)
-label_status.pack(side=tk.LEFT)
-
 
 def show_infos():
     info_window = tk.Toplevel(root)
     info_window.title("Détails sur le prompt généré")
-    info_window.geometry("750x650")
+    info_window.geometry("750x725")
     container = tk.Frame(info_window, bg="#323232")
     container.pack(fill="both", expand=True)
 
@@ -630,11 +638,8 @@ def show_infos():
     btn_copy = ttk.Button(single_tab, text="Copier mots-clés", command=lambda: (
         root.clipboard_clear(),
         root.clipboard_append(",".join([kw for kw, _, _ in keywords])),
-        print("Mots-clés copiés:", ",".join([kw for kw, _, _ in keywords]))
-    ), style='Green.TButton')
+    ), style='Bottom.TButton')
     btn_copy.pack(pady=10)
-
-
 
     # === Onglet 2 : Contexte ===
     context_frame = ttk.Frame(notebook, style="TFrame")
@@ -718,16 +723,31 @@ def show_infos():
         canvas.tag_bind(node, "<Leave>", hide_tooltip)
 
 
-# Boutons droite
-right_buttons = ttk.Frame(main_frame)
-right_buttons.pack(side=tk.RIGHT, anchor='ne', pady=(10, 0))
+# Barre de statut ET boutons - Frame horizontal unifié
+status_buttons_frame = ttk.Frame(main_frame, style='TFrame')
+status_buttons_frame.pack(fill=tk.X, pady=(5, 2))
+
+# Statut à gauche
+label_status = ttk.Label(
+    status_buttons_frame,
+    text="Prêt",
+    style='Status.TLabel',
+    foreground='white',
+    anchor='w'  # Alignement à gauche plus naturel
+)
+label_status.pack(side=tk.LEFT, anchor='w')
+
+# Boutons à droite - dans le même frame horizontal
+right_buttons = ttk.Frame(status_buttons_frame, style='TFrame')
+right_buttons.pack(side=tk.RIGHT, anchor='e')
 
 btn_info = ttk.Button(right_buttons, text="Détails", style='Bottom.TButton', command=show_infos, width=8)
-btn_info.pack(pady=(0, 3))
-btn_help = ttk.Button(right_buttons, text="Aide", style='Bottom.TButton', command=show_help, width=8)
-btn_help.pack()
+btn_info.pack(side=tk.TOP, pady=(0, 3))
 
-# Footer
+btn_help = ttk.Button(right_buttons, text="Aide", style='Bottom.TButton', command=show_help, width=8)
+btn_help.pack(side=tk.TOP)
+
+# Footer - inchangé
 footer_frame = ttk.Frame(root, style='TFrame')
 footer_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 5))
 
@@ -737,6 +757,5 @@ dev_label.pack(side=tk.LEFT)
 github_link = ttk.Label(footer_frame, text="GitHub", style='Blue.TLabel', cursor="hand2")
 github_link.pack(side=tk.LEFT)
 github_link.bind("<Button-1>", open_github)
-
 
 root.mainloop()
