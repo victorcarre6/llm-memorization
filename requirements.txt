@@ -7,3 +7,4 @@ accelerate
 skikit-learn
 jq
 spacy
+wordcloud
