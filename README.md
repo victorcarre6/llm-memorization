@@ -25,7 +25,7 @@ Le script `import_lmstudio.py` explore le dossier de LM Studio, lit tous les `.j
 
 Chaque échange est :  
 - Stocké dans la table `conversations`.  
-- Hashé avec SHA-256 pour éviter les doublons.  
+- Hashé avec MD5 pour éviter les doublons.  
 - Horodaté pour pouvoir retrouver des conversations en fonction du temps.  
 - Analysé via **KeyBERT** pour en extraire 5 mots-clés, qui sont stockés dans la table `keywords`.
 
