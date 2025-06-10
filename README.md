@@ -26,18 +26,13 @@ ______
 
 ### 1. Extraction des conversations
 
-Le script `import_lmstudio.py` explore le dossier de LM Studio, lit tous les `.json` de conversations et en extrait les paires `(question, réponse)`.
+Le script `import_lmstudio.py` explore le dossier de conversations de LM Studio, lit tous les `.json` et en extrait les paires `(question, réponse)`.
 
 Chaque échange est :  
 - Stocké dans la table `conversations`.  
 - Hashé avec MD5 pour éviter les doublons.  
 - Horodaté pour pouvoir retrouver des conversations en fonction du temps.  
-- Analysé via **KeyBERT** pour en extraire 5 mots-clés, qui sont stockés dans la table `keywords`.
-
-Utilisation de `import_lmstudio.py` :
-- **Synchronisation** depuis l'outil `enhancer.py`.
-- **Lancement manuel** avec `synchro_conversations.command`, qui rend le script **exécutable**.  
-- **Automatiser avec `cron`** pour exécuter le script à intervalles réguliers.
+- Analysé via **KeyBERT** pour en extraire 20 mots-clés, qui sont stockés dans la table `keywords`.
 
 ### 2. Amélioration de prompts
 
