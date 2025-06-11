@@ -45,12 +45,8 @@ Le script `enhancer.py`, exécutable avec `prompt_enhancer.command` :
 
 - Pose la question initiale,  
 - Extrait les mots-clés correspondants,  
-<<<<<<< HEAD
 - Récupère les couples questions/réponses similaires dans la base SQLite,
   - Combinaison de recherche par mots-clés, pour cibler rapidement les conversations pertinentes; avec une recherche vectorielle pour affiner  
-=======
-- Récupère les couples questions/réponses similaires dans la base SQLite,  
->>>>>>> 8a0da8a2683a0ad7030f3f19798276426cd064aa
 - Résume les réponses avec un modèle local ([`moussaKam/barthez-orangesum-abstract`](https://huggingface.co/moussaKam/barthez-orangesum-abstract)),  
 - Colle dans le presse-papiers un prompt complet, contenant les précédents échanges résumés, en terminant avec la question initiale,
 - Offre une interface graphique avec :
