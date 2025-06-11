@@ -27,7 +27,8 @@ ______
 
 ## Fonctionnement
 
-![Capture d’écran 2025-06-11 à 17 19 01](https://github.com/user-attachments/assets/1a40cc77-d048-49f3-898f-2c03cf9e6e3a)
+![image](https://github.com/user-attachments/assets/62fbe054-e77e-403b-9c2f-d9b85a2976ab)
+
 
 ### 1. Extraction des conversations
 
@@ -53,7 +54,8 @@ Le script `enhancer.py`, exécutable avec `prompt_enhancer.command` :
   - fenêtre d'aide,
   - fenêtre d'analyse de données.
  
-![image](https://github.com/user-attachments/assets/add565f5-6e03-4eda-9624-a1e35866636e)
+![Capture d’écran 2025-06-11 à 17 19 01](https://github.com/user-attachments/assets/e3a9127e-be00-4f98-91d4-cce2b07794b1)
+
 ______
 
 ## Installation
