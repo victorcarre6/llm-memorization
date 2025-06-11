@@ -27,7 +27,8 @@ ______
 
 ## Fonctionnement
 
-![image](https://github.com/user-attachments/assets/62fbe054-e77e-403b-9c2f-d9b85a2976ab)
+![image](https://github.com/user-attachments/assets/a3746d16-ebee-4807-8054-ccee6ef59f76)
+
 
 
 ### 1. Extraction des conversations
