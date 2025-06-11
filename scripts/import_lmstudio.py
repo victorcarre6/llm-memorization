@@ -2,12 +2,19 @@ import os
 import json
 import sqlite3
 import hashlib
+import faiss
+import numpy as np
 from datetime import datetime
-import sklearn
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 import re
-import json
+import spacy
 from keybert import KeyBERT
+from sentence_transformers import SentenceTransformer, util
+import torch
+from datetime import datetime
+import Levenshtein
+from langdetect import detect
+
 
 # === INITIALISATION ===
 
@@ -15,62 +22,130 @@ from keybert import KeyBERT
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 with open(os.path.join(PROJECT_ROOT, "config.json")) as f:
     raw_config = json.load(f)
-config = {
-    key: os.path.normpath(os.path.join(PROJECT_ROOT, value)) if isinstance(value, str) else value
-    for key, value in raw_config.items()
-}
+def normalize_path(value):
+    if isinstance(value, str):
+        if value.startswith("~") or os.path.isabs(value):
+            return os.path.normpath(os.path.expanduser(value))
+        else:
+            return os.path.normpath(os.path.join(PROJECT_ROOT, value))
+    return value
+
+config = {key: normalize_path(value) for key, value in raw_config.items()}
 
 stopwords_path = config.get("stopwords_file_path", "stopwords_fr.json")
 with open(stopwords_path, "r", encoding="utf-8") as f:
     french_stopwords = set(json.load(f))
 
 DB_PATH = config["db_path"]
-FOLDER_PATH = config["lmstudio_folder_path"]
+FOLDER_PATH = os.path.expanduser(config["lmstudio_folder_path"])
 EXTENSIONS = ['.json']
-TOP_K = 5
+
+def clock():
+    return datetime.now().strftime("[%H:%M:%S]")
 
 # === Modèle et connection à la base ===
 kw_model = KeyBERT()
+nlp_fr = spacy.load("fr_core_news_lg")
+nlp_en = spacy.load("en_core_web_lg")
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 conn = sqlite3.connect(DB_PATH)
 cur = conn.cursor()
 
-# Créaction de la table si elle n'existe pas
+# Index vectoriel
+VECTOR_DIM = 384
+faiss_index = faiss.IndexFlatL2(VECTOR_DIM)
+
+# Création de la table si elle n'existe pas avec timestamp ajouté
 cur.execute('''
     CREATE TABLE IF NOT EXISTS hash_index (
         hash TEXT PRIMARY KEY
     )
 ''')
+
+cur.execute('''
+    CREATE TABLE IF NOT EXISTS conversations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_input TEXT,
+        llm_output TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+''')
+
+cur.execute('''
+    CREATE TABLE IF NOT EXISTS vectors (
+        conversation_id INTEGER,
+        keyword TEXT,
+        vector TEXT,
+        FOREIGN KEY(conversation_id) REFERENCES conversations(id)
+    )
+''')
+
 conn.commit()
 
-# === EXTRACTION MOTS-CLÉS ===
+# === EXTRACTION MOTS-CLÉS ET VECTEURS ===
 combined_stopwords = ENGLISH_STOP_WORDS.union(french_stopwords)
 
-def extract_keywords(text, top_n=20):
+def lemmatize_spacy(word, lang="fr"):
+    if lang == "fr":
+        doc = nlp_fr(word)
+    elif lang == "en":
+        doc = nlp_en(word)
+    else:
+        # Par défaut, français
+        doc = nlp_fr(word)
+    return doc[0].lemma_.lower()
+
+
+def lemmatize_auto(word):
+    lang = detect(word)
+    if lang.startswith("fr"):
+        return lemmatize_spacy(word, lang="fr")
+    elif lang.startswith("en"):
+        return lemmatize_spacy(word, lang="en")
+    else:
+        return word.lower()
+
+
+def extract_keywords(text, top_n=25, similarity_threshold=0.50):
     raw_keywords = kw_model.extract_keywords(
         text,
-        keyphrase_ngram_range=(1, 1),  # mots simples uniquement
+        keyphrase_ngram_range=(1, 1),
         stop_words=list(combined_stopwords),
-        top_n=top_n * 2  # marges pour filtrer ensuite
+        top_n=top_n * 3
     )
-
     seen = set()
     filtered_keywords = []
-
     for kw, _ in raw_keywords:
         kw_clean = kw.lower().strip()
+        kw_clean = lemmatize_spacy(kw_clean)
         if (
             kw_clean not in seen and
             kw_clean not in combined_stopwords and
             len(kw_clean) > 2 and
             re.match(r'^[a-zA-Z\-]+$', kw_clean)
         ):
+             # filtrage manuel pluriels
+            if kw_clean.endswith('s') and kw_clean[:-1] in seen:
+                continue
+            if any(Levenshtein.distance(kw_clean, k) <= 1 for k in seen):
+                continue
             seen.add(kw_clean)
             filtered_keywords.append(kw_clean)
 
-        if len(filtered_keywords) >= top_n:
+    embeddings = embedding_model.encode(filtered_keywords, convert_to_tensor=True)
+
+    selected = []
+    for i, emb in enumerate(embeddings):
+        if len(selected) == 0:
+            selected.append((filtered_keywords[i], emb))
+        else:
+            similarities = util.cos_sim(emb, torch.stack([e[1] for e in selected]))
+            if torch.max(similarities).item() < similarity_threshold:
+                selected.append((filtered_keywords[i], emb))
+        if len(selected) >= top_n:
             break
 
-    return filtered_keywords
+    return [(kw, emb.cpu().numpy().tolist()) for kw, emb in selected]
 
 # === INSÉRER CONVERSATION AVEC DÉDOUBLONNAGE ===
 def insert_conversation_if_new(user_input, llm_output):
@@ -81,16 +156,24 @@ def insert_conversation_if_new(user_input, llm_output):
     if cur.fetchone():
         return False  # Déjà présent
 
-    # Insertion
-    cur.execute("INSERT INTO conversations (user_input, llm_output) VALUES (?, ?)", (user_input, llm_output))
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute(
+        "INSERT INTO conversations (user_input, llm_output, timestamp) VALUES (?, ?, ?)",
+        (user_input, llm_output, now)
+    )
     conversation_id = cur.lastrowid
 
-    keywords = extract_keywords(combined)
-    for kw in keywords:
-        cur.execute("INSERT INTO keywords (conversation_id, keyword) VALUES (?, ?)", (conversation_id, kw))
+    vectors = extract_keywords(combined)
+    for kw, vec in vectors:
+        cur.execute("INSERT INTO vectors (conversation_id, keyword, vector) VALUES (?, ?, ?)",
+                    (conversation_id, kw, json.dumps(vec)))
+
+        vec_np = np.array(vec, dtype='float32').reshape(1, -1)
+        faiss_index.add(vec_np)
 
     cur.execute("INSERT INTO hash_index (hash) VALUES (?)", (hash_digest,))
     conn.commit()
+    print(f"{clock()} Nouvelle conversation insérée (id={conversation_id})")
     return True
 
 # === PARSE LES FICHIERS JSON ===
@@ -100,7 +183,6 @@ def parse_lmstudio_file(filepath: str) -> list[tuple[str, str]]:
 
     messages = data.get("messages")
     if not isinstance(messages, list):
-        print(f"⚠️ Format inattendu (pas une liste) dans : {filepath}")
         return []
 
     pairs = []
@@ -142,9 +224,10 @@ def import_all():
                 full_path = os.path.join(root, file)
                 pairs = parse_lmstudio_file(full_path)
                 for user_input, llm_output in pairs:
-                    if insert_conversation_if_new(user_input, llm_output):
+                    result = insert_conversation_if_new(user_input, llm_output)
+                    if result:
                         new_count += 1
-    print(f"✅ Import terminé. {new_count} nouvelles paires insérées.")
+    print(f"{clock()} Import terminé, {new_count} nouvelles conversations ajoutées.")
 
 if __name__ == '__main__':
     import_all()

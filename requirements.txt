@@ -1,5 +1,10 @@
 transformers
 keybert
+pandas
+sqlalchemy
+nltk
+json
+levenshtein
 spacy
 torch
 scikit-learn
@@ -7,6 +12,7 @@ accelerate
 matplotlib
 tkinter
 pyperclip
+faiss-cpu
 jq
 ipython
 jupyter

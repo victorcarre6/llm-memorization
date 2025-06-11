@@ -7,12 +7,18 @@ import webbrowser
 from collections import Counter
 import tkinter as tk
 from tkinter import scrolledtext, ttk, Canvas
+import math
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import spacy
+from langdetect import detect
 import torch
+import faiss
 import heapq
-import sklearn
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer
 import logging
 import warnings
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
@@ -20,6 +26,8 @@ from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
 from transformers import logging as transformers_logging
 from keybert import KeyBERT
 import pyperclip
+from datetime import datetime
+
 
 # === INITIALISATION ===
 
@@ -70,20 +78,26 @@ combined_stopwords = ENGLISH_STOP_WORDS.union(french_stop_words)
 
 # Masquage des avertissements
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-logging.getLogger("transformers").setLevel(logging.ERROR)
-logging.getLogger("torch").setLevel(logging.ERROR)
-torch._C._log_api_usage_once = lambda *args, **kwargs: None
-warnings.filterwarnings("ignore", message="Unfeasible length constraints", category=UserWarning, module="transformers.generation.utils")
+#logging.getLogger("transformers").setLevel(logging.ERROR)
+#logging.getLogger("torch").setLevel(logging.ERROR)
+#torch._C._log_api_usage_once = lambda *args, **kwargs: None
+#warnings.filterwarnings("ignore", message="Unfeasible length constraints", category=UserWarning, module="transformers.generation.utils")
 
 # Connexion à la base SQLite
 conn = sqlite3.connect(config["db_path"])
 cur = conn.cursor()
 
 # Initialisation des modèles
-nlp = spacy.load("fr_core_news_lg")
+nlp_fr = spacy.load("fr_core_news_lg")
+nlp_en = spacy.load("en_core_web_lg")
 kw_model = KeyBERT()
 summarizing_model = config.get("summarizing_model", "model/barthez-orangesum-abstract")
 summarizing_pipeline = pipeline(task="summarization", model=summarizing_model, framework="pt")
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+
+# Index vectoriel
+VECTOR_DIM = 384
+faiss_index = faiss.IndexFlatL2(VECTOR_DIM)
 
 # === FONCTIONS PRINCIPALES ===
 
@@ -110,8 +124,10 @@ def on_ask():
     if not question.strip():
         update_status("⚠️ Merci de saisir une question.", error=True)
         return
+    
     update_status("⚙️ Traitement en cours...")
     root.update()
+    
     try:
         context = get_relevant_context(question, limit=context_count_var.get()) #", limit=context_count_var.get()" ajoutée slider contexte
         prompt = generate_prompt_paragraph(context, question)
@@ -124,19 +140,42 @@ def on_ask():
         token_count = len(prompt.split())
         
         update_status(
-            f"Prompt généré ({token_count} tokens) | Contexte utilisé : {context_count} éléments",
-            success=True
-        )
+        f"Prompt généré ({token_count} tokens) | Contexte utilisé : {context_count} élément{'s' if context_count > 1 else ''}",
+        success=True
+)
     except Exception as e:
         update_status(f"❌ Erreur : {str(e)}", error=True)
 
 # === CONTEXTE ===
+
+# Choix NLP selon langue
+def get_nlp_model(text):
+    try:
+        lang = detect(text)
+    except:
+        lang = "fr"  # défaut français si détection impossible
+    
+    if lang.startswith("en"):
+        return nlp_en
+    else:
+        return nlp_fr
+
 
 # Récupération des mots-clés de la question initiale
 root = tk.Tk()
 keyword_count_var = tk.IntVar(value=5)
 context_count_var = tk.IntVar(value=3)
 multiplier = config.get("keyword_multiplier", 2)
+
+
+def lemmatize_spacy(word, lang="fr"):
+    if lang == "fr":
+        doc = nlp_fr(word)
+    elif lang == "en":
+        doc = nlp_en(word)
+    else:
+        doc = nlp_fr(word)
+    return doc[0].lemma_.lower()
 
 def extract_keywords(text, top_n=None):
     if top_n is None:
@@ -148,6 +187,7 @@ def extract_keywords(text, top_n=None):
         keyphrase_ngram_range=(1, 1),
         stop_words=list(combined_stopwords),
         top_n=top_n * multiplier)
+
 
     stopwords_set = set(combined_stopwords)
 
@@ -164,82 +204,144 @@ def extract_keywords(text, top_n=None):
 
     # Tri par fréquence dans le texte #  /!\ ==peu entrainer des doublons== /!\
     filtered_raw = []
+    seen = set()
     for kw, weight in raw_keywords:
         kw_clean = kw.lower().strip()
         if is_valid_kw(kw_clean):
+            kw_lemma = lemmatize_spacy(kw_clean)
+            # Filtrage manuel pluriels : on saute si singulier déjà vu
+            if kw_lemma.endswith('s') and kw_lemma[:-1] in seen:
+                continue
+            if kw_lemma in seen:
+                continue
             freq = token_freq.get(kw_clean, 0)
-            filtered_raw.append((freq, kw_clean, weight))
+            filtered_raw.append((freq, kw_lemma, weight))
+            seen.add(kw_lemma)
+    update_status("⚙️ Tri des mots-clefs ...")
+    root.update()
 
     top_filtered = heapq.nlargest(top_n, filtered_raw, key=lambda x: x[0])
 
-    seen = set()
     filtered_keywords = []
-    for freq, kw_clean, weight in top_filtered:
-        if kw_clean not in seen:
-            seen.add(kw_clean)
-            filtered_keywords.append((kw_clean, weight, freq))
+    seen = set()
+    for freq, kw_lemma, weight in top_filtered:
+        if kw_lemma not in seen:
+            seen.add(kw_lemma)
+            filtered_keywords.append((kw_lemma, weight, freq))
 
     return filtered_keywords
 
+def get_vector_for_text(text):
+    vec = embedding_model.encode([text])
+    return np.array(vec[0], dtype='float32')
+
 # Récupération des anciennes conversations pertinentes
 
-def get_relevant_context(user_question, limit=None):
+def get_relevant_context(user_question, limit=None, similarity_threshold=0.1):
     if limit is None:
         limit = context_count_var.get()
-    
+
+    update_status("⚙️ Récupération des anciennes conversations ...")
+    root.update()
+
     keywords = extract_keywords(user_question)
-    if not keywords:
+    if not keywords or not isinstance(keywords, (list, tuple)):
+        print("Warning: keywords non valides ou vides:", keywords)
         return []
-    
-    placeholders = ', '.join(['?'] * len(keywords))
-    
-    # 1ère requête : récupérer conversations triées par nombre de mots-clés communs
-    query_contexts = f'''
-        SELECT c.id, c.user_input, c.llm_output, c.timestamp, COUNT(DISTINCT k.keyword) AS score
-        FROM conversations c
-        JOIN keywords k ON c.id = k.conversation_id
-        WHERE k.keyword IN ({placeholders})
-        GROUP BY c.id
-        ORDER BY score DESC
-        LIMIT ?
-    '''
-    keyword_strings = [kw[0] for kw in keywords]
-    cur.execute(query_contexts, (*keyword_strings, limit))
-    context_rows = cur.fetchall()  # [(id, user_input, llm_output, timestamp, score), ...]
-    
-    if not context_rows:
+
+    try:
+        keyword_strings = [kw[0] for kw in keywords if isinstance(kw, (list, tuple)) and len(kw) > 0]
+    except Exception as e:
+        print(f"Erreur extraction keywords: {e}")
         return []
-    
-    # Extraire les IDs pour récupérer leurs mots-clés
-    convo_ids = [row[0] for row in context_rows]
-    placeholders_ids = ', '.join(['?'] * len(convo_ids))
-    
-    # 2ème requête : récupérer les mots-clés associés aux conversations sélectionnées
-    query_keywords = f'''
-        SELECT conversation_id, keyword
-        FROM keywords
-        WHERE conversation_id IN ({placeholders_ids})
+
+    if not keyword_strings:
+        print("Warning: liste keyword_strings vide après extraction")
+        return []
+
+    query_vectors = '''
+        SELECT conversation_id, keyword, vector
+        FROM vectors
     '''
-    cur.execute(query_keywords, convo_ids)
-    keyword_rows = cur.fetchall()  # [(conversation_id, keyword), ...]
-    
-    # Organiser les mots-clés par conversation
+    cur.execute(query_vectors)
+    vector_rows = cur.fetchall()
+
+    if not vector_rows:
+        return []
+
+    convo_ids = []
+    vectors = []
     keywords_by_convo = {}
-    for convo_id, keyword in keyword_rows:
-        keywords_by_convo.setdefault(convo_id, set()).add(keyword)
-    
-    # Construire le résultat final avec mots-clés inclus
+
+    for convo_id, kw, vec_str in vector_rows:
+        if not vec_str or not vec_str.strip():
+            continue
+        try:
+            vec_str_clean = vec_str.strip().replace('\n', '').replace('\r', '').replace('[', '').replace(']', '')
+            vec = np.fromstring(vec_str_clean, sep=',').astype('float32')
+        except Exception as e:
+            print(f"Erreur conversion vecteur pour convo {convo_id}: {e}")
+            continue
+        convo_ids.append(convo_id)
+        vectors.append(vec)
+        keywords_by_convo.setdefault(convo_id, set()).add(kw)
+
+    if not vectors:
+        return []
+
+    vectors = np.array(vectors).astype('float32')
+
+    # Normalisation pour similarité par cosine
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    vectors = vectors / np.clip(norms, a_min=1e-10, a_max=None)
+
+    question_vec = get_vector_for_text(user_question).astype('float32').reshape(1, -1)
+    question_norm = np.linalg.norm(question_vec, axis=1, keepdims=True)
+    question_vec = question_vec / np.clip(question_norm, a_min=1e-10, a_max=None)
+
+    faiss_index = faiss.IndexFlatIP(vectors.shape[1])
+    faiss_index.add(vectors)
+
+    distances, indices = faiss_index.search(question_vec, limit)
+
+    found_convo_ids = []
+    found_scores = {}
+    for i, idx in enumerate(indices[0]):
+        if idx == -1:
+            continue
+        score = distances[0][i]
+        if score >= similarity_threshold:
+            convo_id = convo_ids[idx]
+            found_convo_ids.append(convo_id)
+            found_scores[convo_id] = score
+
+
+    if not found_convo_ids:
+        return []
+
+    placeholders_ids = ', '.join(['?'] * len(found_convo_ids))
+
+    query_contexts = f'''
+        SELECT id, user_input, llm_output, timestamp
+        FROM conversations
+        WHERE id IN ({placeholders_ids})
+    '''
+    cur.execute(query_contexts, found_convo_ids)
+    context_rows = cur.fetchall()
+
     filtered_context = []
-    for convo_id, user_input, llm_output, timestamp, score in context_rows:
+    for convo_id, user_input, llm_output, timestamp in context_rows:
         kws = list(keywords_by_convo.get(convo_id, []))
-        filtered_context.append((user_input, llm_output, timestamp, kws))
-    
+        score = found_scores.get(convo_id, 0.0)
+        filtered_context.append((user_input, llm_output, timestamp, kws, score))
+
     return filtered_context
+
 
 # Nettoyage du texte
 def nlp_clean_text(text, max_chunk_size=500):
-
     text = re.sub(r'```(?:python)?\s*.*?```', '', text, flags=re.DOTALL)
+    nlp = get_nlp_model(text)
     chunks, current_chunk, current_length = [], [], 0
 
     for sent in nlp(text).sents:
@@ -263,6 +365,8 @@ def nlp_clean_text(text, max_chunk_size=500):
 # Compression du contexte extrait
 def summarize(text, focus_terms=None, max_length=1024):
     transformers_logging.set_verbosity_error()
+    update_status("⚙️ Compression du contexte extrait ...")
+    root.update()
     try:
         # Filtrage des phrases importantes si focus_terms donné
         if focus_terms:
@@ -286,21 +390,30 @@ def summarize(text, focus_terms=None, max_length=1024):
         return text[:max_length] + "... [résumé tronqué]"
     
 # Construction du prompt
+
+
 def generate_prompt_paragraph(context, question, target_tokens=1000):
+    update_status("⚙️ Génération du prompt ...")
+    root.update()
     if not context:
         return f"{question}"
-
     # 1. Prétraitement
     processed_items = []
-    for item in context[:3]:  # Nombre max d'éléments dans le contexte
+    limit=context_count_var.get() # Nombre max d'éléments dans le contexte
+    
+    root.update()
+    for item in context[:limit]:  
         try:
             # Extraction sécurisée
+
             user_input = str(item[0])[:300]  # Troncature des questions longues
             llm_output = str(item[1])
             keyword = str(item[5]) if len(item) > 5 and str(item[3]).strip() not in {"", "none", "null", "1", "2", "3"} else None
 
+
             # Summarization, netooyage, segmentation
             summary = nlp_clean_text(summarize(llm_output))
+
             processed_items.append({
                 'question': user_input,
                 'summary': summary,
@@ -315,7 +428,6 @@ def generate_prompt_paragraph(context, question, target_tokens=1000):
 
     # 2. Construction du prompt
     parts = []
-
     # Partie questions
     if processed_items:
         questions = [f"'{item['question']}'" for item in processed_items]
@@ -343,7 +455,6 @@ def generate_prompt_paragraph(context, question, target_tokens=1000):
 # === INTERFACE TKINTER ===
 
 def update_status(message, error=False, success=False):
-    """Met à jour le label de statut avec style approprié"""
     label_status.config(text=message)
     if error:
         label_status.config(foreground='#ff6b6b')
@@ -531,10 +642,10 @@ label_contexts_count.pack(anchor='w')
 slider_contexts = ttk.Scale(
     slider_context_frame,
     from_=1,
-    to=5,
+    to=10,
     orient=tk.HORIZONTAL,
     variable=context_count_var,
-    length=170,
+    length=180,
     command=lambda val: label_contexts_count.config(text=f"Nombre de contextes : {int(float(val))}")
 )
 slider_contexts.pack(anchor='w')
@@ -570,6 +681,8 @@ def toggle_output():
 output_frame = ttk.Frame(main_frame, style='TFrame')
 output_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
+
+
 # Bouton pour étendre/cacher
 toggle_btn = ttk.Button(
     output_frame,
@@ -590,10 +703,42 @@ text_output = scrolledtext.ScrolledText(
     insertbackground="black"
 )
 
+# Clics droits sur les zones de texte
+
+context_menu = tk.Menu(text_output, tearoff=0)
+context_menu.add_command(label="Copier", command=lambda: text_output.event_generate("<<Copy>>"))
+
+def show_context_menu(event):
+    context_menu.tk_popup(event.x_root, event.y_root)
+
+text_output.bind("<Button-3>", show_context_menu)
+
+
+question_menu = tk.Menu(entry_question, tearoff=0)
+question_menu.add_command(label="Coller", command=lambda: entry_question.event_generate("<<Paste>>"))
+
+def show_question_menu(event):
+    question_menu.tk_popup(event.x_root, event.y_root)
+
+entry_question.bind("<Button-3>", show_question_menu)
+
+
+
+#text_output.bind("<Button-3>", show_context_menu)
+
+    #for (convo_id, user_input, llm_output, timestamp, kws, score) in filtered_context
+    #for (kw_lemma, weight, freq) in filtered_keywords
+
+    # On récupère les infos de la question initiales
+    #question_vector = np.array(vec[0], dtype='float32')
+
+
+
 def show_infos():
+    global notebook
     info_window = tk.Toplevel(root)
-    info_window.title("Détails sur le prompt généré")
-    info_window.geometry("750x725")
+    info_window.title("Détails sur le prompt généré et sur la base de donnée")
+    info_window.geometry("900x850")
     container = tk.Frame(info_window, bg="#323232")
     container.pack(fill="both", expand=True)
 
@@ -605,15 +750,8 @@ def show_infos():
         update_status("⚠️ Posez une question d'abord.", error=True)
         return
 
-    keywords = extract_keywords(question)
-    if not keywords:
-        update_status("⚠️ Aucun mot-clé extrait.", error=True)
-        return
-
-    filtered_context = get_relevant_context(question, limit=5)
-    if not filtered_context:
-        update_status("⚠️ Aucun contexte trouvé.", error=True)
-        return
+    filtered_keywords = extract_keywords(question)
+    filtered_context = get_relevant_context(question)
 
     notebook = ttk.Notebook(container, style="TNotebook")
     notebook.pack(fill="both", expand=True, padx=10, pady=10)
@@ -621,146 +759,201 @@ def show_infos():
     single_tab = ttk.Frame(notebook, style="TFrame")
     notebook.add(single_tab, text="Mots-clés & Stats")
 
-        # Calcul des fréquences dans les contextes
-    full_text_context = " ".join(user_input + " " + llm_output for user_input, llm_output, _, _ in filtered_context).lower()
-    token_list = re.findall(r'\b[a-zA-Z\-]{3,}\b', full_text_context)
+    if filtered_keywords:
+        kw_lemmas = [kw for kw, _, _ in filtered_keywords]
+        freqs = [freq for _, _, freq in filtered_keywords]
+        weights = [weight for _, weight, _ in filtered_keywords]
 
-    word_counts = {}
-    for kw, _, _ in keywords:
-        count = token_list.count(kw.lower())
-        word_counts[kw] = count
+        # --- Barplot fréquence + poids ---
 
-    # --- Histogramme ---
-    fig, ax = plt.subplots(figsize=(6, 4), dpi=100)
-    bars = ax.bar(word_counts.keys(), word_counts.values(), color='#599258')
+        sorted_indices = sorted(range(len(weights)), key=lambda i: weights[i], reverse=True)
 
-    ax.set_facecolor("#323232")
-    fig.patch.set_facecolor("#323232")
-    ax.set_title("Fréquence des mots-clés dans les contextes", color="white", fontsize=10)
-    ax.set_ylabel("Occurrences", color="white", fontsize=10)
-    ax.tick_params(axis='x', labelrotation=45, colors="white", labelsize=10)
-    ax.tick_params(axis='y', colors="white", labelsize=10)
-    for spine in ax.spines.values():
-        spine.set_color('white')
+        kw_lemmas_sorted = [kw_lemmas[i] for i in sorted_indices]
+        freqs_sorted = [freqs[i] for i in sorted_indices]
+        weights_sorted = [weights[i] for i in sorted_indices]
 
-    fig.tight_layout()
+        fig, ax = plt.subplots(figsize=(7, 4), dpi=100)
+        bar_width = 0.4
+        x = range(len(kw_lemmas_sorted))
 
-    canvas = FigureCanvasTkAgg(fig, master=single_tab)
-    canvas.draw()
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=False, padx=10, pady=(10, 0))
+        bars1 = ax.bar(x, freqs_sorted, width=bar_width, label="Occurrences", color="#599258")
+        bars2 = ax.bar([i + bar_width for i in x], weights_sorted, width=bar_width, label="Poids", color="#a2d149")
 
-    # --- Tableau Treeview ---
-    cols = ('Mot-clé', 'Poids', 'Occurrences dans contextes')
-    tree = ttk.Treeview(single_tab, columns=cols, show='headings', height=10, style='Custom.Treeview')
-    for col in cols:
-        tree.heading(col, text=col)
-        tree.column(col, width=150)
-    tree.pack(expand=False, fill='both', padx=10, pady=(10, 0))
+        ax.set_facecolor("#323232")
+        fig.patch.set_facecolor("#323232")
+        ax.set_xticks([i + bar_width / 2 for i in x])
+        ax.set_xticklabels(kw_lemmas_sorted, rotation=45, ha='right', color="white", fontsize=10)
+        ax.tick_params(axis='y', colors="white", labelsize=10)
+        ax.set_title("Fréquence et poids des mots-clés de la question", color="white", fontsize=12)
+        ax.legend(facecolor="#323232", labelcolor="white")
+        for spine in ax.spines.values():
+            spine.set_color('white')
 
-    tree.tag_configure('oddrow', background='#2a2a2a')
-    tree.tag_configure('evenrow', background='#383838')
+        fig.tight_layout()
+        canvas = FigureCanvasTkAgg(fig, master=single_tab)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=False, padx=10, pady=(10, 0))
+        plt.close(fig)
 
-    for i, (kw, weight, _) in enumerate(keywords):
-        freq_in_context = word_counts.get(kw, 0)
-        tag = 'evenrow' if i % 2 == 0 else 'oddrow'
-        tree.insert('', tk.END, values=(kw, f"{weight:.3f}", freq_in_context), tags=(tag,))
 
-    btn_copy = ttk.Button(single_tab, text="Copier mots-clés", command=lambda: (
+        # --- Tableau amélioré ---
+        cols = ('Mot-clé', 'Occurrences', 'Poids', 'Score max')
+        tree = ttk.Treeview(single_tab, columns=cols, show='headings', height=12, style='Custom.Treeview')
+        for col in cols:
+            tree.heading(col, text=col)
+            tree.column(col, width=150 if col != 'Mot-clé' else 200, anchor=tk.CENTER)
+        tree.pack(expand=False, fill='both', padx=10, pady=(10, 0))
+
+        tree.tag_configure('oddrow', background='#2a2a2a')
+        tree.tag_configure('evenrow', background='#383838')
+
+        for i, (kw, weight, freq) in enumerate(filtered_keywords):
+            score = max_scores.get(kw, 0.0)
+            tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+            tree.insert('', tk.END, values=(kw, freq, f"{weight:.3f}", f"{score:.3f}"), tags=(tag,))
+
+
+        # --- Nuage de mots pondéré par poids, coloré par score ---
+        frequencies_wc = {kw: weight for kw, weight, _ in filtered_keywords}
+        scores_wc = max_scores
+
+        # Fonction de couleur en fonction du score max
+        def color_func(word, **kwargs):
+            score = scores_wc.get(word, 0)
+            if score == 0:
+                return "rgb(180, 50, 50)"
+            norm = min(max(score, 0), 1)
+            r = int((1 - norm) * 180 + norm * 0)
+            g = int((1 - norm) * 255 + norm * 100)
+            b = int((1 - norm) * 180 + norm * 0)
+            return f"rgb({r},{g},{b})"
+
+        wc = WordCloud(
+            width=600,
+            height=400,
+            background_color=None,
+            mode="RGBA",
+            colormap=None,
+            prefer_horizontal=0.9,
+            min_font_size=10,
+            max_font_size=90
+        ).generate_from_frequencies(frequencies_wc)
+
+        wc.recolor(color_func=color_func)
+
+        title_label = ttk.Label(single_tab, text="Nuage de mots pondéré par poids et coloré par score", 
+                                font=("Segoe UI", 14, "bold"), foreground="white", background="#323232")
+        title_label.pack(padx=10, pady=(10, 0), anchor="w")
+
+        # Affichage dans Tkinter
+        fig2, ax2 = plt.subplots(figsize=(7, 4), dpi=100)
+        ax2.imshow(wc, interpolation='bilinear')
+        ax2.axis("off")
+        fig2.patch.set_facecolor("#323232")
+        ax2.set_facecolor("#323232")
+
+        canvas2 = FigureCanvasTkAgg(fig2, master=single_tab)
+        canvas2.draw()
+        canvas2.get_tk_widget().pack(fill=tk.BOTH, expand=False, padx=10, pady=(20, 0))
+        plt.close(fig2)
+
+    ttk.Button(single_tab, text="Copier mots-clés", command=lambda: (
         root.clipboard_clear(),
-        root.clipboard_append(",".join([kw for kw, _, _ in keywords])),
-    ), style='Bottom.TButton')
-    btn_copy.pack(pady=10)
+        root.clipboard_append(",".join([kw for kw, _, _ in filtered_keywords]))
+    )).pack(pady=10)
 
-    # === Onglet 2 : Contexte ===
-    context_frame = ttk.Frame(notebook, style="TFrame")
-    notebook.add(context_frame, text="Contextes")
 
-    lbl_container = tk.Frame(context_frame, bg="#323232")
+    # --- Onglet Contextes ---
+    context_tab = ttk.Frame(notebook, style="TFrame")
+    notebook.add(context_tab, text="Contextes")
+    lbl_container = tk.Frame(context_tab, bg="#323232")
     lbl_container.pack(fill="both", expand=True)
 
     tk.Label(lbl_container, text="Questions contextuelles :", fg="white", bg="#323232", font=("Segoe UI", 10, "bold")).pack(pady=5)
-    tk.Label(lbl_container,
-             text="Légende :\n- 1 mot clef : rouge\n- 2 ou 3 : orange\n- >3 : vert",
+    tk.Label(lbl_container, text="Légende :\n- 1 mot clef : rouge\n- 2 ou 3 : orange\n- >3 : vert",
              fg="white", bg="#323232", justify="left", wraplength=700, font=("Segoe UI", 8, "italic")).pack(anchor="w", padx=10, pady=(0, 10))
 
+    def print_filtered_context_structure(filtered_context, max_items=1):
+        print(f"Affichage des {min(len(filtered_context), max_items)} premiers éléments de filtered_context:")
+        for i, item in enumerate(filtered_context[:max_items]):
+            print(f"Tuple #{i+1} (longueur={len(item)}):")
+            for idx, val in enumerate(item):
+                print(f"  [{idx}]: {val} (type: {type(val).__name__})")
+            print("-" * 40)
+
+    print_filtered_context_structure(filtered_context)
+
+
+    base_keywords = set(kw for kw, _, _ in filtered_keywords) #user_input, timestamp, kws
     for item in filtered_context:
-        q_text = item[0]
+        q_text = item[1]  # ici user_input
+        timestamp = item[2] # changer nombre si timestamp non donné
         extracted = set(kw for kw, _, _ in extract_keywords(q_text))
-        base_keywords = set(kw for kw, _, _ in keywords)
         shared = len(extracted & base_keywords)
         color = "#ff6b6b" if shared <= 1 else "#ffb347" if shared <= 3 else "#7CFC00"
-        tk.Label(
-            lbl_container,
-            text=q_text[:100] + ("..." if len(q_text) > 100 else ""),
-            fg=color, bg="#323232", wraplength=700
-        ).pack(anchor="w", padx=10)
+        display_text = f"{timestamp} - {q_text[:250]}{'...' if len(q_text) > 250 else ''}"
+        tk.Label(lbl_container, text=display_text, fg=color, bg="#323232", wraplength=700).pack(anchor="w", padx=10)
 
-    # === Onglet 3 : Carte mentale ===
-    mindmap_frame = ttk.Frame(notebook, style="TFrame")
-    notebook.add(mindmap_frame, text="Carte mentale")
+    # --- Onglet Carte Mentale ---
+    mindmap_tab = ttk.Frame(notebook, style="TFrame")
+    notebook.add(mindmap_tab, text="Carte mentale")
 
-    canvas = tk.Canvas(mindmap_frame, bg="#323232", highlightthickness=0)
+    canvas = tk.Canvas(mindmap_tab, bg="#323232", highlightthickness=0)
     canvas.pack(fill=tk.BOTH, expand=True)
 
-    questions_list = [item[0] for item in filtered_context]
+    questions_list = [item[1] for item in filtered_context]
     keywords_per_question = [set(kw for kw, _, _ in extract_keywords(q)) for q in questions_list]
-
-    import math
-    n = len(questions_list)
-    center_x, center_y = 350, 300
-    radius = 250
-    nodes_positions = []
-
-    for i in range(n):
-        angle = 2 * math.pi * i / n
-        x = center_x + radius * math.cos(angle)
-        y = center_y + radius * math.sin(angle)
-        nodes_positions.append((x, y))
-
-    for i in range(n):
-        for j in range(i + 1, n):
-            if keywords_per_question[i] & keywords_per_question[j]:
-                x1, y1 = nodes_positions[i]
-                x2, y2 = nodes_positions[j]
-                canvas.create_line(x1, y1, x2, y2, fill="#7CFC00", width=1)
-
+    center_x, center_y, radius = 350, 300, 250
     radius_node = 15
-    _tooltip = None
+    positions = [(center_x + radius * math.cos(2 * math.pi * i / len(questions_list)),
+                  center_y + radius * math.sin(2 * math.pi * i / len(questions_list)))
+                 for i in range(len(questions_list))]
+
+    for i in range(len(questions_list)):
+        for j in range(i + 1, len(questions_list)):
+            if keywords_per_question[i] & keywords_per_question[j]:
+                canvas.create_line(*positions[i], *positions[j], fill="#7CFC00", width=1)
+
+    tooltip = None
 
     def show_tooltip(event, text):
-        nonlocal _tooltip
-        if _tooltip:
-            canvas.delete(_tooltip)
-            _tooltip = None
-        x, y = event.x + 10, event.y + 10
-        _tooltip = canvas.create_text(x, y, text=text, anchor="nw", fill="white", font=("Segoe UI", 9), width=300, tags="tooltip")
+        nonlocal tooltip
+        if tooltip:
+            canvas.delete(tooltip)
+        tooltip = canvas.create_text(event.x + 10, event.y + 10, text=text, anchor="nw", fill="white", font=("Segoe UI", 9), width=300)
 
     def hide_tooltip(event):
-        nonlocal _tooltip
-        if _tooltip:
-            canvas.delete(_tooltip)
-            _tooltip = None
+        nonlocal tooltip
+        if tooltip:
+            canvas.delete(tooltip)
+            tooltip = None
 
-    for i, (x, y) in enumerate(nodes_positions):
+    for i, (x, y) in enumerate(positions):
         node = canvas.create_oval(x - radius_node, y - radius_node, x + radius_node, y + radius_node, fill="#599258", outline="")
         canvas.tag_bind(node, "<Enter>", lambda e, q=questions_list[i]: show_tooltip(e, q))
         canvas.tag_bind(node, "<Leave>", hide_tooltip)
 
-# Barre de statut ET boutons - Frame horizontal unifié
+    # --- Onglet Stats Globales (TODO) ---
+    # Ajouter ici une requête SQL si tu veux récupérer l'ensemble des mots-clés de la base.
+
+
+
+
+# Barre de statut et boutons
 status_buttons_frame = ttk.Frame(main_frame, style='TFrame')
 status_buttons_frame.pack(fill=tk.X, pady=(5, 2))
 
-# Statut à gauche
+# Barre de statut
 label_status = ttk.Label(
     status_buttons_frame,
     text="Prêt",
     style='Status.TLabel',
     foreground='white',
-    anchor='w'  # Alignement à gauche plus naturel
+    anchor='w'
 )
 label_status.pack(side=tk.LEFT, anchor='w')
 
-# Boutons à droite - dans le même frame horizontal
+# Boutons Info et Aide
 right_buttons = ttk.Frame(status_buttons_frame, style='TFrame')
 right_buttons.pack(side=tk.RIGHT, anchor='e')
 
