@@ -8,9 +8,11 @@ from collections import Counter
 import tkinter as tk
 from tkinter import scrolledtext, ttk, Canvas
 import math
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from wordcloud import WordCloud
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.colors import LinearSegmentedColormap
+from wordcloud import WordCloud
+
 import spacy
 from langdetect import detect
 import torch
@@ -140,7 +142,7 @@ def on_ask():
         token_count = len(prompt.split())
         
         update_status(
-        f"Prompt généré ({token_count} tokens) | Contexte utilisé : {context_count} élément{'s' if context_count > 1 else ''}",
+        f"✅ Prompt généré ({token_count} tokens) | Contexte utilisé : {context_count} élément{'s' if context_count > 1 else ''}",
         success=True
 )
     except Exception as e:
@@ -217,8 +219,6 @@ def extract_keywords(text, top_n=None):
             freq = token_freq.get(kw_clean, 0)
             filtered_raw.append((freq, kw_lemma, weight))
             seen.add(kw_lemma)
-    update_status("⚙️ Tri des mots-clefs ...")
-    root.update()
 
     top_filtered = heapq.nlargest(top_n, filtered_raw, key=lambda x: x[0])
 
@@ -240,9 +240,6 @@ def get_vector_for_text(text):
 def get_relevant_context(user_question, limit=None, similarity_threshold=0.1):
     if limit is None:
         limit = context_count_var.get()
-
-    update_status("⚙️ Récupération des anciennes conversations ...")
-    root.update()
 
     keywords = extract_keywords(user_question)
     if not keywords or not isinstance(keywords, (list, tuple)):
@@ -502,7 +499,7 @@ style_config = {
         'background': '#599258',
         'foreground': 'white',
         'font': ('Segoe UI', 11),
-        'padding': 4
+        'padding': 2
     },
     'Bottom.TButton': {
         'background': '#599258',
@@ -738,7 +735,7 @@ def show_infos():
     global notebook
     info_window = tk.Toplevel(root)
     info_window.title("Détails sur le prompt généré et sur la base de donnée")
-    info_window.geometry("900x850")
+    info_window.geometry("900x750")
     container = tk.Frame(info_window, bg="#323232")
     container.pack(fill="both", expand=True)
 
@@ -753,11 +750,13 @@ def show_infos():
     filtered_keywords = extract_keywords(question)
     filtered_context = get_relevant_context(question)
 
+# -- Onglet Input
+
     notebook = ttk.Notebook(container, style="TNotebook")
     notebook.pack(fill="both", expand=True, padx=10, pady=10)
 
     single_tab = ttk.Frame(notebook, style="TFrame")
-    notebook.add(single_tab, text="Mots-clés & Stats")
+    notebook.add(single_tab, text="Input")
 
     if filtered_keywords:
         kw_lemmas = [kw for kw, _, _ in filtered_keywords]
@@ -797,6 +796,16 @@ def show_infos():
 
 
         # --- Tableau amélioré ---
+
+        max_scores = {}
+        for item in filtered_context:
+            user_input = item[1]
+            score = item[4]
+            kws = set(kw for kw, _, _ in extract_keywords(user_input))
+            for kw in kws:
+                if kw not in max_scores or score > max_scores[kw]:
+                    max_scores[kw] = score
+
         cols = ('Mot-clé', 'Occurrences', 'Poids', 'Score max')
         tree = ttk.Treeview(single_tab, columns=cols, show='headings', height=12, style='Custom.Treeview')
         for col in cols:
@@ -812,87 +821,105 @@ def show_infos():
             tag = 'evenrow' if i % 2 == 0 else 'oddrow'
             tree.insert('', tk.END, values=(kw, freq, f"{weight:.3f}", f"{score:.3f}"), tags=(tag,))
 
-
-        # --- Nuage de mots pondéré par poids, coloré par score ---
-        frequencies_wc = {kw: weight for kw, weight, _ in filtered_keywords}
-        scores_wc = max_scores
-
-        # Fonction de couleur en fonction du score max
-        def color_func(word, **kwargs):
-            score = scores_wc.get(word, 0)
-            if score == 0:
-                return "rgb(180, 50, 50)"
-            norm = min(max(score, 0), 1)
-            r = int((1 - norm) * 180 + norm * 0)
-            g = int((1 - norm) * 255 + norm * 100)
-            b = int((1 - norm) * 180 + norm * 0)
-            return f"rgb({r},{g},{b})"
-
-        wc = WordCloud(
-            width=600,
-            height=400,
-            background_color=None,
-            mode="RGBA",
-            colormap=None,
-            prefer_horizontal=0.9,
-            min_font_size=10,
-            max_font_size=90
-        ).generate_from_frequencies(frequencies_wc)
-
-        wc.recolor(color_func=color_func)
-
-        title_label = ttk.Label(single_tab, text="Nuage de mots pondéré par poids et coloré par score", 
-                                font=("Segoe UI", 14, "bold"), foreground="white", background="#323232")
-        title_label.pack(padx=10, pady=(10, 0), anchor="w")
-
-        # Affichage dans Tkinter
-        fig2, ax2 = plt.subplots(figsize=(7, 4), dpi=100)
-        ax2.imshow(wc, interpolation='bilinear')
-        ax2.axis("off")
-        fig2.patch.set_facecolor("#323232")
-        ax2.set_facecolor("#323232")
-
-        canvas2 = FigureCanvasTkAgg(fig2, master=single_tab)
-        canvas2.draw()
-        canvas2.get_tk_widget().pack(fill=tk.BOTH, expand=False, padx=10, pady=(20, 0))
-        plt.close(fig2)
-
-    ttk.Button(single_tab, text="Copier mots-clés", command=lambda: (
-        root.clipboard_clear(),
-        root.clipboard_append(",".join([kw for kw, _, _ in filtered_keywords]))
-    )).pack(pady=10)
-
-
     # --- Onglet Contextes ---
     context_tab = ttk.Frame(notebook, style="TFrame")
-    notebook.add(context_tab, text="Contextes")
+    notebook.add(context_tab, text="Output")
     lbl_container = tk.Frame(context_tab, bg="#323232")
     lbl_container.pack(fill="both", expand=True)
 
+        # Affichage des questions colorées
+
     tk.Label(lbl_container, text="Questions contextuelles :", fg="white", bg="#323232", font=("Segoe UI", 10, "bold")).pack(pady=5)
-    tk.Label(lbl_container, text="Légende :\n- 1 mot clef : rouge\n- 2 ou 3 : orange\n- >3 : vert",
-             fg="white", bg="#323232", justify="left", wraplength=700, font=("Segoe UI", 8, "italic")).pack(anchor="w", padx=10, pady=(0, 10))
+    tk.Label(lbl_container,
+        text="Légende :",
+        fg="white",
+        bg="#323232",
+        justify="left",
+        wraplength=700,
+        font=("Segoe UI", 8, "italic")
+    ).pack(anchor="w", padx=10)
 
-    def print_filtered_context_structure(filtered_context, max_items=1):
-        print(f"Affichage des {min(len(filtered_context), max_items)} premiers éléments de filtered_context:")
-        for i, item in enumerate(filtered_context[:max_items]):
-            print(f"Tuple #{i+1} (longueur={len(item)}):")
-            for idx, val in enumerate(item):
-                print(f"  [{idx}]: {val} (type: {type(val).__name__})")
-            print("-" * 40)
+    legend_texts = [
+        ("- 1 mot clef", "#ff6b6b"),
+        ("- 2 ou 3 mots clefs", "#ffb347"),
+        ("- 4 mots clefs ou plus", "#599258"),
+    ]
 
-    print_filtered_context_structure(filtered_context)
-
+    for text, color in legend_texts:
+        label = tk.Label(
+            lbl_container,
+            text=text,
+            fg=color,
+            bg="#323232",
+            font=("Segoe UI", 8, "italic")
+        )
+        label.pack(anchor="w", padx=30)
 
     base_keywords = set(kw for kw, _, _ in filtered_keywords) #user_input, timestamp, kws
     for item in filtered_context:
-        q_text = item[1]  # ici user_input
+        q_text = item[0]  # ici user_input
         timestamp = item[2] # changer nombre si timestamp non donné
         extracted = set(kw for kw, _, _ in extract_keywords(q_text))
         shared = len(extracted & base_keywords)
         color = "#ff6b6b" if shared <= 1 else "#ffb347" if shared <= 3 else "#7CFC00"
         display_text = f"{timestamp} - {q_text[:250]}{'...' if len(q_text) > 250 else ''}"
-        tk.Label(lbl_container, text=display_text, fg=color, bg="#323232", wraplength=700).pack(anchor="w", padx=10)
+        tk.Label(lbl_container, text=display_text, fg=color, bg="#323232", wraplength=700, justify="left").pack(anchor="w", padx=10)
+
+
+
+    # Nuage de mots des mots clefs des questions extraites
+
+    tk.Label(lbl_container, text="Nuage de mots clefs des contextes :", fg="white", bg="#323232", font=("Segoe UI", 10, "bold")).pack(pady=2)
+    tk.Label(lbl_container, text="Taille : fréquence, couleur : poids", fg="white", bg="#323232", font=("Segoe UI", 7, "italic")).pack(pady=2)
+
+        ## Comptage des mots-clés
+    kw_counter = Counter()
+    for item in filtered_context:
+        if len(item) > 3 and isinstance(item[3], list):
+            kw_counter.update(item[3])
+
+        ## Création du nuage de mots basé sur les fréquences
+    wc = WordCloud(
+        width=700,
+        height=400,
+        background_color="#323232",
+        mode="RGBA",
+        colormap="YlGnBu",
+        prefer_horizontal=0.8,
+        min_font_size=10,
+        max_font_size=80
+    ).generate_from_frequencies(kw_counter)
+
+            ### Définition d'un colormap personnalisé du vert clair au vert foncé
+    custom_cmap = LinearSegmentedColormap.from_list(
+            "custom_green",
+            ["#599238", "#323232"]
+        )
+
+        ### Fonction de recolorisation selon la fréquence relative (entre 0 et 1)
+    def color_func(word, **kwargs):
+        freq = kwargs.get('frequency', 0)
+        max_freq = max(kw_counter.values()) if kw_counter else 1
+        norm_freq = freq / max_freq if max_freq > 0 else 0
+        norm_freq = 0.1 + 0.9 * norm_freq
+        rgba = custom_cmap(norm_freq)
+        r, g, b = [int(255 * x) for x in rgba[:3]]
+        return f"#{r:02x}{g:02x}{b:02x}"
+
+            ### Appliquer la recolorisation
+    wc = wc.recolor(color_func=color_func)
+
+        ## Affichage dans l'interface Tkinter
+    fig3, ax3 = plt.subplots(figsize=(7, 4), dpi=100)
+    ax3.imshow(wc, interpolation='bilinear')
+    ax3.axis("off")
+    fig3.patch.set_facecolor("#323232")
+    ax3.set_facecolor("#323232")
+
+    canvas3 = FigureCanvasTkAgg(fig3, master=lbl_container)
+    canvas3.draw()
+    canvas3.get_tk_widget().pack(fill=tk.BOTH, expand=False, padx=10, pady=(10, 0))
+    plt.close(fig3)
 
     # --- Onglet Carte Mentale ---
     mindmap_tab = ttk.Frame(notebook, style="TFrame")
@@ -901,7 +928,7 @@ def show_infos():
     canvas = tk.Canvas(mindmap_tab, bg="#323232", highlightthickness=0)
     canvas.pack(fill=tk.BOTH, expand=True)
 
-    questions_list = [item[1] for item in filtered_context]
+    questions_list = [item[0] for item in filtered_context]
     keywords_per_question = [set(kw for kw, _, _ in extract_keywords(q)) for q in questions_list]
     center_x, center_y, radius = 350, 300, 250
     radius_node = 15
@@ -933,11 +960,35 @@ def show_infos():
         canvas.tag_bind(node, "<Enter>", lambda e, q=questions_list[i]: show_tooltip(e, q))
         canvas.tag_bind(node, "<Leave>", hide_tooltip)
 
-    # --- Onglet Stats Globales (TODO) ---
-    # Ajouter ici une requête SQL si tu veux récupérer l'ensemble des mots-clés de la base.
+    # --- Database ---
 
+    stats_tab = ttk.Frame(notebook, style="TFrame")
+    notebook.add(stats_tab, text="Base de donnée")
 
+    frame_stats = tk.Frame(stats_tab, bg="#323232")
+    frame_stats.pack(fill="both", expand=True, padx=20, pady=20)
 
+    # Reconnexion à la base SQLite ici
+    conn = sqlite3.connect(config["db_path"])
+    cur = conn.cursor()
+
+    # Requêtes SQL pour les stats globales
+    cur.execute("SELECT COUNT(*) FROM conversations")
+    nb_conversations = cur.fetchone()[0]
+
+    cur.execute("SELECT COUNT(*) FROM vectors")
+    nb_mots_clefs = cur.fetchone()[0]
+
+    cur.execute("SELECT COUNT(DISTINCT keyword) FROM vectors")
+    nb_mots_clefs_uniques = cur.fetchone()[0]
+
+    conn.close()
+
+    # Affichage
+    tk.Label(frame_stats, text="Statistiques globales de la base", fg="white", bg="#323232", font=("Segoe UI", 10, "bold")).pack(pady=(0, 20))
+    tk.Label(frame_stats, text=f"Nombre de conversations : {nb_conversations}", fg="white", bg="#323232", font=("Segoe UI", 10)).pack(anchor="w", pady=2)
+    tk.Label(frame_stats, text=f"Nombre total de mots clefs : {nb_mots_clefs}", fg="white", bg="#323232", font=("Segoe UI", 10)).pack(anchor="w", pady=2)
+    tk.Label(frame_stats, text=f"Nombre de mots clefs uniques : {nb_mots_clefs_uniques}", fg="white", bg="#323232", font=("Segoe UI", 10)).pack(anchor="w", pady=2)
 
 # Barre de statut et boutons
 status_buttons_frame = ttk.Frame(main_frame, style='TFrame')

@@ -1,6 +1,65 @@
 
 Comment la photocatalyse rédox est actuellement appliquée en "drug discovery" du secteur pharmaceutique ?
 
+
+    tk.Label(lbl_container, text="Questions contextuelles :", fg="white", bg="#323232", font=("Segoe UI", 10, "bold")).pack(pady=5)
+    tk.Label(lbl_container, text="Légende :")
+    legend_frame = tk.Frame(lbl_container, bg="#323232")
+    legend_frame.pack(pady=5, padx=10, anchor="w")
+    tk.Label(legend_frame, text="1 mot clef", fg="#ff6b6b", bg="#323232", font=("Segoe UI", 10)).pack(side="left")
+    #tk.Label(legend_frame, text="  |  ", fg="white", bg="#323232", font=("Segoe UI", 10)).pack(side="left")
+    tk.Label(legend_frame, text="2 ou 3 mots clefs", fg="#ffb347", bg="#323232", font=("Segoe UI", 10)).pack(side="left")
+    #tk.Label(legend_frame, text="  |  ", fg="white", bg="#323232", font=("Segoe UI", 10)).pack(side="left")
+    tk.Label(legend_frame, text="4 mots clefs ou plus", fg="#599258", bg="#323232", font=("Segoe UI", 10)).pack(side="left")
+
+for text, color in legend_texts:
+    tk.Label(
+        lbl_container,
+        text=text,
+        fg=color,
+        bg="#323232",
+        justify="left",
+        wraplength=700,
+        font=("Segoe UI", 8, "italic")
+    ).pack(anchor="w", padx=20)
+
+# Prints des tuples filtered_context
+
+        def print_tuple_structure(data_tuple, max_depth=2, indent=0):
+            prefix = "  " * indent
+            if indent > max_depth:
+                print(f"{prefix}... (profondeur max atteinte)")
+                return
+
+            if isinstance(data_tuple, (tuple, list)):
+                print(f"{prefix}Tuple/List (len={len(data_tuple)}):")
+                for i, val in enumerate(data_tuple):
+                    print(f"{prefix} [{i}] (type={type(val).__name__}): ", end="")
+                    if isinstance(val, (tuple, list)):
+                        print()
+                        print_tuple_structure(val, max_depth=max_depth, indent=indent + 1)
+                    else:
+                        print(val)
+            else:
+                print(f"{prefix}{data_tuple} (type={type(data_tuple).__name__})")
+
+        if filtered_context:
+            print("Structure du premier élément de filtered_context :")
+            print_tuple_structure(filtered_context[0])
+        else:
+            print("filtered_context est vide.")
+
+
+    def print_filtered_context_structure(filtered_context, max_items=1):
+        print(f"Affichage des {min(len(filtered_context), max_items)} premiers éléments de filtered_context:")
+        for i, item in enumerate(filtered_context[:max_items]):
+            print(f"Tuple #{i+1} (longueur={len(item)}):")
+            for idx, val in enumerate(item):
+                print(f"  [{idx}]: {val} (type: {type(val).__name__})")
+            print("-" * 40)
+
+    print_filtered_context_structure(filtered_context)
+
 # Code original du notebook avec les vecteurs
 
 def show_infos():
