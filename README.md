@@ -83,11 +83,7 @@ venv\Scripts\activate     # Windows
 pip install -r requirements.txt
 ```
 
-<<<<<<< HEAD
   - puis installer les modèle NLP `fr_core_news_lg`et `en_core_web_lg`.
-=======
-  - puis installer le modèle NLP `fr_core_news_lg`:
->>>>>>> 8a0da8a2683a0ad7030f3f19798276426cd064aa
 
 ```bash
 python -m spacy download fr_core_news_lg
