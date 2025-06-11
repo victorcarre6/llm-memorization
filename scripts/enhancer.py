@@ -104,27 +104,31 @@ faiss_index = faiss.IndexFlatL2(VECTOR_DIM)
 # === FONCTIONS PRINCIPALES ===
 
 # Synchronisation des conversations
-def sync_conversations(config, label_status):
+def sync_conversations():
     sync_path = config.get("sync_script_path")
+
+    update_status("⚙️ Synchronisation en cours...")
+    root.update()
+
     if not sync_path:
-        label_status.config(text="sync_script_path introuvable.")
+        label_status.config(text="❌ Erreur lors de la synchronisation (sync_script_path).", foreground='#ff6b6b')
         return False
     try:
         subprocess.run(["python3", sync_path], check=True)
-        label_status.config(text="Synchronisation terminée.")
+        label_status.config(text="✅ Synchronisation terminée.", foreground='#599258')
         return True
     except subprocess.CalledProcessError:
-        label_status.config(text="Erreur lors de la synchronisation.")
+        label_status.config(text="❌ Erreur lors de la synchronisation (subprocess).", foreground='#ff6b6b')
         return False
     except FileNotFoundError:
-        label_status.config(text="Script de synchronisation introuvable.")
+        label_status.config(text="❌ Script de synchronisation introuvable.", foreground='#ff6b6b')
         return False
 
 # Pércuteur
 def on_ask():
     question = entry_question.get("1.0", "end-1c")
     if not question.strip():
-        update_status("⚠️ Merci de saisir une question.", error=True)
+        update_status("⚠️ Saisissez une question.", error=True)
         return
     
     update_status("⚙️ Traitement en cours...")
@@ -744,7 +748,8 @@ def show_infos():
 
     question = entry_question.get("1.0", tk.END).strip()
     if not question:
-        update_status("⚠️ Posez une question d'abord.", error=True)
+        update_status("⚠️ Saisissez une question avant de continuer.", error=True)
+        info_window.destroy()
         return
 
     filtered_keywords = extract_keywords(question)
@@ -783,7 +788,7 @@ def show_infos():
         ax.set_xticks([i + bar_width / 2 for i in x])
         ax.set_xticklabels(kw_lemmas_sorted, rotation=45, ha='right', color="white", fontsize=10)
         ax.tick_params(axis='y', colors="white", labelsize=10)
-        ax.set_title("Fréquence et poids des mots-clés de la question", color="white", fontsize=12)
+        ax.set_title("Fréquence et poids des mots-clés de la question", color="white", fontsize=10, fontweight='bold')
         ax.legend(facecolor="#323232", labelcolor="white")
         for spine in ax.spines.values():
             spine.set_color('white')
@@ -855,6 +860,7 @@ def show_infos():
         )
         label.pack(anchor="w", padx=30)
 
+    tk.Label(lbl_container, text="", bg="#323232").pack(pady=5)
     base_keywords = set(kw for kw, _, _ in filtered_keywords) #user_input, timestamp, kws
     for item in filtered_context:
         q_text = item[0]  # ici user_input
@@ -870,7 +876,7 @@ def show_infos():
     # Nuage de mots des mots clefs des questions extraites
 
     tk.Label(lbl_container, text="Nuage de mots clefs des contextes :", fg="white", bg="#323232", font=("Segoe UI", 10, "bold")).pack(pady=2)
-    tk.Label(lbl_container, text="Taille : fréquence, couleur : poids", fg="white", bg="#323232", font=("Segoe UI", 7, "italic")).pack(pady=2)
+    tk.Label(lbl_container, text="🚧WIP🚧 Taille : fréquence, couleur : poids", fg="white", bg="#323232", font=("Segoe UI", 7, "italic")).pack(pady=2)
 
         ## Comptage des mots-clés
     kw_counter = Counter()
@@ -989,6 +995,8 @@ def show_infos():
     tk.Label(frame_stats, text=f"Nombre de conversations : {nb_conversations}", fg="white", bg="#323232", font=("Segoe UI", 10)).pack(anchor="w", pady=2)
     tk.Label(frame_stats, text=f"Nombre total de mots clefs : {nb_mots_clefs}", fg="white", bg="#323232", font=("Segoe UI", 10)).pack(anchor="w", pady=2)
     tk.Label(frame_stats, text=f"Nombre de mots clefs uniques : {nb_mots_clefs_uniques}", fg="white", bg="#323232", font=("Segoe UI", 10)).pack(anchor="w", pady=2)
+
+    tk.Label(frame_stats, text="🚧WIP🚧 Visualisation des données conversationnelles globales", fg="white", bg="#323232", font=("Segoe UI", 10, "bold")).pack(pady=2)
 
 # Barre de statut et boutons
 status_buttons_frame = ttk.Frame(main_frame, style='TFrame')
