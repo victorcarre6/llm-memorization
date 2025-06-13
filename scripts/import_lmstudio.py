@@ -65,17 +65,19 @@ cur.execute('''
 cur.execute('''
     CREATE TABLE IF NOT EXISTS conversations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_input TEXT,
-        llm_output TEXT,
+        user_input TEXT NOT NULL,
+        llm_model TEXT NOT NULL,
+        llm_output TEXT NOT NULL,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )
 ''')
 
 cur.execute('''
     CREATE TABLE IF NOT EXISTS vectors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         conversation_id INTEGER,
         keyword TEXT,
-        vector TEXT,
+        vector BLOB,
         FOREIGN KEY(conversation_id) REFERENCES conversations(id)
     )
 ''')
@@ -148,28 +150,27 @@ def extract_keywords(text, top_n=25, similarity_threshold=0.50):
     return [(kw, emb.cpu().numpy().tolist()) for kw, emb in selected]
 
 # === INSÉRER CONVERSATION AVEC DÉDOUBLONNAGE ===
-def insert_conversation_if_new(user_input, llm_output):
+def insert_conversation_if_new(user_input, llm_output, llm_model):
     combined = user_input + llm_output
     hash_digest = hashlib.md5(combined.encode('utf-8')).hexdigest()
 
     cur.execute("SELECT 1 FROM hash_index WHERE hash = ?", (hash_digest,))
     if cur.fetchone():
-        return False  # Déjà présent
+        return False
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cur.execute(
-        "INSERT INTO conversations (user_input, llm_output, timestamp) VALUES (?, ?, ?)",
-        (user_input, llm_output, now)
+        "INSERT INTO conversations (user_input, llm_output, llm_model, timestamp) VALUES (?, ?, ?, ?)",
+        (user_input, llm_output, llm_model, now)
     )
     conversation_id = cur.lastrowid
 
     vectors = extract_keywords(combined)
     for kw, vec in vectors:
+        vec_np = np.array(vec, dtype='float32')
         cur.execute("INSERT INTO vectors (conversation_id, keyword, vector) VALUES (?, ?, ?)",
-                    (conversation_id, kw, json.dumps(vec)))
-
-        vec_np = np.array(vec, dtype='float32').reshape(1, -1)
-        faiss_index.add(vec_np)
+                    (conversation_id, kw, vec_np.tobytes()))
+        faiss_index.add(vec_np.reshape(1, -1))
 
     cur.execute("INSERT INTO hash_index (hash) VALUES (?)", (hash_digest,))
     conn.commit()
@@ -201,6 +202,8 @@ def parse_lmstudio_file(filepath: str) -> list[tuple[str, str]]:
             current_question = "\n".join(texts).strip()
 
         elif role == "assistant" and current_question:
+            sender_info = selected_version.get("senderInfo", {})  # Correction ici
+            current_model = sender_info.get("senderName", "unknown")
             steps = selected_version.get("steps", [])
             response_parts = []
             for step in steps:
@@ -210,7 +213,7 @@ def parse_lmstudio_file(filepath: str) -> list[tuple[str, str]]:
 
             llm_response = "\n".join(response_parts).strip()
             if llm_response:
-                pairs.append((current_question, llm_response))
+                pairs.append((current_question, llm_response, current_model))
                 current_question = None
 
     return pairs
@@ -218,13 +221,15 @@ def parse_lmstudio_file(filepath: str) -> list[tuple[str, str]]:
 # === PARCOURS DU DOSSIER ===
 def import_all():
     new_count = 0
-    for root, _, files in os.walk(FOLDER_PATH):
+    for root, dirs, files in os.walk(FOLDER_PATH):
+        if "Unsync" in dirs:
+            dirs.remove("Unsync")
         for file in files:
             if any(file.endswith(ext) for ext in EXTENSIONS):
                 full_path = os.path.join(root, file)
                 pairs = parse_lmstudio_file(full_path)
-                for user_input, llm_output in pairs:
-                    result = insert_conversation_if_new(user_input, llm_output)
+                for user_input, llm_output, llm_model in pairs:
+                    result = insert_conversation_if_new(user_input, llm_output, llm_model)
                     if result:
                         new_count += 1
     print(f"{clock()} Import terminé, {new_count} nouvelles conversations ajoutées.")

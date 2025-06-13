@@ -1,59 +1,57 @@
 # LLM Memorization & Prompt Enhancer
 
-> Un projet pour indexer, historiser et rechercher les conversations avec un LLM local (utilisé via une librairie comme LM Studio) avec une base SQLite enrichie par des mots-clés extraits automatiquement.
+> A project to index, archive, and search conversations with a local LLM (accessed via a library like LM Studio) using a SQLite database enriched with automatically extracted keywords.
 
-> Le projet est conçu pour fonctionner sans appel aux API externes, gardant la confidentialité des données.
+> The project is designed to work without calling any external APIs, ensuring data privacy.
 
-> L'idée est de fournir un contexte important et personnalisé lors du début d'une conversation avec un LLM, en ajoutant des informations mémoires au premier prompt de l'échange.
+> The idea is to provide substantial and personalized context at the start of a conversation with an LLM by adding memory information to the initial prompt.
 
-> Les données recueillies (base de données et prompts générés) peuvent être analysées directement dans le script.
+> The collected data (database and generated prompts) can be analyzed directly within the script.
 
 ______
 
 ## Objectifs
 
-- Automatisation de requêtes depuis la librairie de gestion conversationnelle de LLMs locaux (LM Studio, Transformer Labs, Ollama, ...) pour constituer une base de donnée SQLite.
-- Fonction de recherche hybride pour trouver les contextes les plus pertinents dans la base :
-  -  Filtre des conversations avec les mots-clés extraits de la question, 
-  -  Utilisation d'un index vectoriel pour mesurer la similarité sémantique.
-- Amélioration de prompts en proposant un contexte adapté à la question posée en s'appuyant sur les échanges précédents.
-- Interface graphique tout-en-un.
-  - Choix du nombre de mots-clefs et de contextes extraits avec des sliders.
-- Visualisation de données
-  - Informations sur le prompt généré en fonction des mots clefs.
-  - Informations sur la base de données de conversations (nuages de mots clefs, cartes mentales).
+- Automate queries from local LLM conversational management libraries (LM Studio, Transformer Labs, Ollama, ...) to build a SQLite database.
+- Hybrid search function to find the most relevant contexts in the database:
+  -  Filter conversations using keywords extracted from the question,
+  -  Use a vector index to measure semantic similarity.
+- Enhance prompts by providing a tailored context based on the posed question relying on previous exchanges.
+- All-in-one graphical user interface:
+  - Adjustable number of extracted keywords and contexts via sliders.
+  - Data visualization :
+    - Information on the generated prompt based on keywords.
+    - Insights on the conversation database.
     
 ______
 
-## Fonctionnement
+## How it works
 
 ![image](https://github.com/user-attachments/assets/a3746d16-ebee-4807-8054-ccee6ef59f76)
 
+### 1. Conversation extraction
 
+The `import_lmstudio.py` script scans the LM Studio conversations folder, reads all `.json` files, and extracts `(input, output, model)` datas.
 
-### 1. Extraction des conversations
+Each exchange is:  
+- Stored in the table `conversations`.  
+- Hashed with MD5 to avoid duplicates.
+- Timestamped to retrieve conversations by date/time. 
+- Analysed using **KeyBERT** to extract 15 keywords, which are stored in the `keywords` table (in text and in vectors).
 
-Le script `import_lmstudio.py` explore le dossier de conversations de LM Studio, lit tous les `.json` et en extrait les paires `(question, réponse)`.
+### 2. Prompt Enhancement
 
-Chaque échange est :  
-- Stocké dans la table `conversations`.  
-- Hashé avec MD5 pour éviter les doublons.  
-- Horodaté pour pouvoir retrouver des conversations en fonction du temps.  
-- Analysé via **KeyBERT** pour en extraire 20 mots-clés, qui sont stockés dans la table `keywords`.
+The `enhancer.py` script, executable via `prompt_enhancer.command` :
 
-### 2. Amélioration de prompts
-
-Le script `enhancer.py`, exécutable avec `prompt_enhancer.command` :
-
-- Pose la question initiale,  
-- Extrait les mots-clés correspondants,  
-- Récupère les couples questions/réponses similaires dans la base SQLite,
-  - Combinaison de recherche par mots-clés, pour cibler rapidement les conversations pertinentes; avec une recherche vectorielle pour affiner  
-- Résume les réponses avec un modèle local ([`moussaKam/barthez-orangesum-abstract`](https://huggingface.co/moussaKam/barthez-orangesum-abstract)),  
-- Colle dans le presse-papiers un prompt complet, contenant les précédents échanges résumés, en terminant avec la question initiale,
-- Offre une interface graphique avec :
-  - fenêtre d'aide,
-  - fenêtre d'analyse de données.
+- Takes the initial question, 
+- Extracts the corresponding keywords, 
+- Retrieves similar question/answer pairs from the SQLite database,
+  - Combining keyword filtering for fast targeting of relevant conversations and vector search for refinement,
+- Summarizes the answers using a local model ([`plguillou/t5-base-fr-sum-cnndm`](https://huggingface.co/plguillou/t5-base-fr-sum-cnndm)),  
+- Copies a complete prompt to the clipboard, containing summarized previous exchanges, ending with the original question,
+- Provides a graphical interface including:
+  - Help window,
+  - Data analysis window.
  
 ![Capture d’écran 2025-06-11 à 17 19 01](https://github.com/user-attachments/assets/e3a9127e-be00-4f98-91d4-cce2b07794b1)
 
@@ -61,14 +59,14 @@ ______
 
 ## Installation
 
-1. Cloner le repository
+1. Clone the repository
 
 ```bash
 git clone https://github.com/victorcarre6/llm-memorization
 cd llm-memorization
 ```
 
-2. Créer un venv
+2. Create a virtual environment
 
 ```bash
 python3 -m venv venv
@@ -76,53 +74,60 @@ source venv/bin/activate  # macOS/Linux
 venv\Scripts\activate     # Windows
 ```
 
-3. Installer les dépendances
+3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-  - puis installer les modèle NLP `fr_core_news_lg`et `en_core_web_lg`.
+  - Then install the NLP models `fr_core_news_lg` and `en_core_web_lg`.
 
 ```bash
 python -m spacy download fr_core_news_lg
 python -m spacy download en_core_web_lg
 ```
 
-4. Télécharger le modèle local
+4. Download the local model
 
-  - avec le script dédié : 
+  - Either with the dedicated script:
 
 ```bash
 python scripts/model_download.py
 ```
-  - ou avec GitLFS (dans le dossier `model`)
+  - Or via GitLFS (in the `model` folder)
 
-5. Arborescence
+5. Directory structure
 
-Le fichier `config.json` à la racine du repo contient les chemins nécessaires au bon fonctionnement des scripts. 
+The `config.json` file at the root contains the paths required for the scripts to function properly.
 
 ______
 
-## Lancement
+## Launch
 
 ```bash
 ./llm_memorization.command
 ```
 ______
 
-## Remarques
+## Notes
 
-- Ces scripts sont fonctionnels avec LM Studio, mais devraient pouvoir être adapté à tout software mettant à disposition les conversations au format `.json`.
+- These scripts work with LM Studio but can be adapted to any software providing conversations in `.json` format.
 
-- Le modèle utilisé pour le raccourcissement du contexte est situé dans `/model`.
+- The choice of [`plguillou/t5-base-fr-sum-cnndm`](https://huggingface.co/plguillou/t5-base-fr-sum-cnndm) was based on its size, power, and hardware requirements (4 GB free RAM needed). The main goal was to find a good compromise to keep query response times under about ten seconds. This model is multilingual, allowing the script to work with both French and English conversations. 
 
-- Le choix du modèle [`moussaKam/barthez-orangesum-abstract`](https://huggingface.co/moussaKam/barthez-orangesum-abstract) été fait en prenant en compte sa taille, sa puissance, et ses besoins matériels (4 Go RAM libre nécessaire). L’objectif principal était de trouver un bon compromis afin d’éviter que les requêtes aient un temps d’attente supérieur à une dizaine de secondes. Ce modèle est multilingue, ce qui permet au script de fonctionner aussi bien avec des conversations en français qu’en anglais. 
+- he model can be changed by inserting a Hugging Face link in  `config.json` under the `model` label.
 
-- Il est possible de changer le modèle utilisé en insérant un lien Hugging Face dans le fichier le `config.json`  sous le label `model`.
+- LThe script applies a multiplier factor (default 2) to the requested number of extracted keywords to obtain more raw keywords, then filters irrelevant ones to ensure a sufficient, high-quality final set. This multiplier is configurable in `config.json` under `keyword_multiplier`.
 
-- Le script applique un facteur multiplicateur (par défaut 2) au nombre de keyword extraits demandé, afin d’extraire plus de mots-clés bruts. Cela permet ensuite de filtrer et supprimer les mots-clés non pertinents, garantissant ainsi un nombre final suffisant et de qualité. Ce coefficiant est modifiable dans `config.json` sous le label `keyword_multiplier`.
+- A French stop-word dictionary is used to eliminate irrelevant keywords (coordinating conjunctions, prepositions, etc.). The file `data/stopwords_fr.json`can be modified to keep or remove specific keywords. This dictionary can be replaced with a custom file via the `stopwords_file_path` label in `config.json`.
 
-- Un dictionnaire de « stop-words » français est utilisé pour éliminer les mots-clés non pertinents (onjonctions de coordinations, prépositions, etc.).
-Le fichier `data/stopwords_fr.json` est modifiable si certains mots-clés présents dans la liste doivent être conservés ou retirés.
-Ce dictionnaire peut être remplacé par un fichier personnalisé, dans `config.json` sous le label `stopwords_file_path`.
+- Example database: ~200 Q&A pairs with OpenChat-3.5, Mistral-7B and DeepSeek-Coder-6.7B on topics including :
+  - Green Chemistry & Catalysis `(FR)`
+  - Pharmaceutical Applications & AI `(FR)`
+  - Photoactivable Molecules & Photocontrol `(FR)`
+  - Plant Science @ Biostimulants `(FR)`
+  - Cross-disciplinary Tools `(FR)`
+  - OLED Materials `(EN)`
+  - Machine Learning in Agrochemistry `(EN)`
+
+- To avoid syncing conversations, they can be hidden in `~/.lmstudio/conversations/unsync`.

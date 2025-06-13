@@ -200,3 +200,8 @@ cython_debug/
 
 # Spécifique à ce projet
 model/barthez-orangesum-abstract/model.safetensorsmodel/barthez-orangesum-abstract/model.safetensors
+scripts/old/
+scripts/enhancer.ipynb
+tempo.md
+/lm-studio-memorization/
+datas/conversations.db

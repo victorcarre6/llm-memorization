@@ -5,6 +5,6 @@
   "project_script_path": "scripts/enhancer.py",
   "db_path": "datas/conversations.db",
   "stopwords_file_path": "datas/stopwords_fr.json",
-  "summarizing_model": "model/barthez-orangesum-abstract",
+  "summarizing_model": "plguillou/t5-base-fr-sum-cnndm",
   "keyword_multiplier": 2
 }
