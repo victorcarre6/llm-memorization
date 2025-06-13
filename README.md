@@ -52,8 +52,10 @@ The `enhancer.py` script, executable via `prompt_enhancer.command` :
 - Provides a graphical interface including:
   - Help window,
   - Data analysis window.
- 
-![Capture d’écran 2025-06-11 à 17 19 01](https://github.com/user-attachments/assets/e3a9127e-be00-4f98-91d4-cce2b07794b1)
+
+ ![Capture d’écran 2025-06-13 à 20 51 50](https://github.com/user-attachments/assets/0ec61f92-eda2-40c5-8579-99bee84e6204)
+<img width="1604" alt="image" src="https://github.com/user-attachments/assets/e17b574b-bf9c-4275-977d-ea6b56406c7d" />
+
 
 ______
 
