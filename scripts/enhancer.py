@@ -1,42 +1,35 @@
+import heapq
+import json
+import logging
 import os
 import re
-import ast
-import json
 import sqlite3
 import subprocess
-import webbrowser
-import math
-import heapq
-import faiss
 import time
-import torch
+import platform
+import warnings
+import webbrowser
+from collections import Counter
+from dataclasses import dataclass
+import tkinter as tk
+from tkinter import scrolledtext, ttk
+import faiss
 import numpy as np
 import pyperclip
-import spacy
-import logging
-import warnings
-import mplcursors
-import tkinter as tk
 import seaborn as sns
-from dataclasses import dataclass
-from tkinter import scrolledtext, ttk
-from collections import Counter
-from wordcloud import WordCloud
+import spacy
 from langdetect import detect
 from langdetect.lang_detect_exception import LangDetectException
 from matplotlib import pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from sklearn.metrics.pairwise import cosine_similarity
-from transformers import logging as transformers_logging
-from transformers import pipeline, T5Tokenizer, T5ForConditionalGeneration
+from transformers import T5ForConditionalGeneration, T5Tokenizer, logging as transformers_logging, pipeline
 from keybert import KeyBERT
-
 # === INITIALISATION ===
 
-# Chargement des variables de configuration
+# --- Configuration projet & chargement du fichier config ---
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 config_path = os.path.join(PROJECT_ROOT, "config.json")
 
@@ -74,22 +67,20 @@ def load_config(config_path):
 
 config = load_config(config_path)
 
-# Suppression des logs indésirables
+# --- Logging & suppression des avertissements ---
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 transformers_logging.set_verbosity_error()
-#warnings.filterwarnings("ignore", category=UserWarning)
-
+warnings.filterwarnings("ignore", category=UserWarning)
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
 
-# Stopwords
+# --- Chargement des stopwords ---
 stopwords_path = config.get("stopwords_file_path", "stopwords_fr.json")
 with open(stopwords_path, "r", encoding="utf-8") as f:
     french_stop_words = set(json.load(f))
 
 combined_stopwords = list(ENGLISH_STOP_WORDS.union(french_stop_words))
 
-
-# Connexion à la base SQLite (Fallback si pas de base personnelle)
+# --- Connexion à la base SQLite ---
 db_path = config["db_path"]
 if not os.path.exists(db_path):
     default_db_path = os.path.join(os.path.dirname(db_path), "conversations_example.db")
@@ -102,24 +93,24 @@ if not os.path.exists(db_path):
 conn = sqlite3.connect(config["db_path"])
 cur = conn.cursor()
 
-# Index vectoriel
+# --- Initialisation de l’index vectoriel ---
 VECTOR_DIM = 384
 faiss_index = faiss.IndexFlatL2(VECTOR_DIM)
 
-# Initialisation des modèles
+# --- Initialisation des modèles ---
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 tokenizer = T5Tokenizer.from_pretrained("plguillou/t5-base-fr-sum-cnndm")
 summarizing_model = T5ForConditionalGeneration.from_pretrained("plguillou/t5-base-fr-sum-cnndm")
 summarizing_pipeline = pipeline(task="summarization", model=summarizing_model, tokenizer=tokenizer, framework="pt")
 
-# Variables globales et classes
+# === STRUCTURES DE DONNÉES ===
 
 @dataclass
 class KeywordsData:
-    kw_lemma: str    # Le mot-clé lemmatisé
-    weight: float    # Score d'extraction (pondération brute)
-    freq: int        # Fréquence dans le texte
-    score: float     # Poids total = freq * weight
+    kw_lemma: str
+    weight: float
+    freq: int
+    score: float
 
 @dataclass
 class ContextData:
@@ -137,7 +128,8 @@ class ContextData:
 
 final_prompt = ""
 
-# Pipeline Linguistique
+# === PIPELINE LINGUISTIQUE ===
+
 class LanguagePipeline:
     def __init__(self, text):
         self.text = text
@@ -181,46 +173,47 @@ class LanguagePipeline:
             top_n=top_n
         )
 
-# FONCTIONS TERTIAIRES -- MOTS CLEFS ET VECTEURS ---
+# === FONCTIONS TERTIAIRES : Mots-clés, Vecteurs, Formatage, NLP ===
 
-    # Récupération de mots-clés
+# --- Paramètres et Interface ---
 root = tk.Tk()
 keyword_count_var = tk.IntVar(value=5)
 context_count_var = tk.IntVar(value=3)
 multiplier = config.get("keyword_multiplier", 2)
 
+# --- Extraction de mots-clés ---
 def extract_keywords(text, top_n=None):
     global filtered_keywords
     if top_n is None:
         top_n = keyword_count_var.get()
+
     pipeline = LanguagePipeline(text)
-    # Extraction primaire
+
+    # Extraction brute
     raw_keywords = pipeline.extract_keywords(
         keyphrase_ngram_range=(1, 1),
         stopwords=combined_stopwords,
         top_n=top_n * multiplier
     )
+
+    # Lemmatisation + fréquence
     tokens = re.findall(r'\b[a-zA-Z\-]{3,}\b', text.lower())
     lemmatized_tokens = [pipeline.lemmatize(tok) for tok in tokens if tok not in combined_stopwords]
     token_freq = Counter(lemmatized_tokens)
 
-
-    # Vérification rapide
     def is_valid_kw(kw):
         return (
             kw not in combined_stopwords and
             len(kw) > 2 and
-            kw.isalpha() or '-' in kw
+            (kw.isalpha() or '-' in kw)
         )
 
-    # Filtrage (supression doublons, lemmatisation, fréquence)
-    filtered_raw = []
-    seen = set()
+    # Filtrage : unicité, lemmatisation, score pondéré
+    filtered_raw, seen = [], set()
     for kw, weight in raw_keywords:
         kw_clean = kw.lower().strip()
         if is_valid_kw(kw_clean):
             kw_lemma = pipeline.lemmatize(kw_clean)
-            # Filtrage manuel pluriels : on saute si singulier déjà vu
             if kw_lemma.endswith('s') and kw_lemma[:-1] in seen:
                 continue
             if kw_lemma in seen:
@@ -232,22 +225,23 @@ def extract_keywords(text, top_n=None):
 
     top_filtered = heapq.nlargest(top_n, filtered_raw, key=lambda x: x[0])
 
-    filtered_keywords = []
-    seen = set()
+    # Création objets KeywordsData
+    filtered_keywords, seen = [], set()
     for score, freq, kw_lemma, weight in top_filtered:
         if kw_lemma not in seen:
             seen.add(kw_lemma)
-            kw_obj = KeywordsData(
-                kw_lemma=kw_lemma,
-                weight=round(weight, 2),
-                freq=freq,
-                score=round(score, 2)
+            filtered_keywords.append(
+                KeywordsData(
+                    kw_lemma=kw_lemma,
+                    weight=round(weight, 2),
+                    freq=freq,
+                    score=round(score, 2)
+                )
             )
-            filtered_keywords.append(kw_obj)
 
     return filtered_keywords
 
-## Formattage du texte
+# --- Nettoyage de texte brut ---
 def format_cleaner(contenu):
     lignes = contenu.split('\n')
     lignes_nettoyees = []
@@ -257,7 +251,7 @@ def format_cleaner(contenu):
         lignes_nettoyees.append(ligne_modifiee)
     return "\n".join(lignes_nettoyees)
 
-## NLP
+# --- NLP : découpage et nettoyage pour résumé ---
 def nlp_clean_text(text, max_chunk_size=500):
     text = re.sub(r'```(?:python)?\s*.*?```', '', text, flags=re.DOTALL)
     nlp = pipeline(text)
@@ -274,34 +268,30 @@ def nlp_clean_text(text, max_chunk_size=500):
             chunks.append(" ".join(current_chunk))
             current_chunk = [s]
             current_length = len(s)
+
     if current_chunk:
         chunks.append(" ".join(current_chunk))
 
-    return " ".join(chunks[:3]), nlp # limite à 3 blocs maximum
+    return " ".join(chunks[:3]), nlp  # max 3 blocs
 
-# FONCTIONS SECONDAIRES --- CONTEXTE ET PROMPT ---
+# --- FONCTIONS SECONDAIRES : CONTEXTE ET PROMPT ---
 
 def get_relevant_context(user_question, limit=None, similarity_threshold=0.2):
     global filtered_context
+
+    # Détermination de la limite
     if limit is None:
         limit = context_count_var.get()
-    # Étape 1 : extraction des mots-clés
+
+    # Étape 1 : extraction des mots-clés et encodage
     keywords = extract_keywords(user_question)
+    keyword_strings = [
+        kw.keyword if hasattr(kw, 'keyword') else (kw[0] if isinstance(kw, (list, tuple)) and kw else str(kw))
+        for kw in keywords
+    ]
+    query_kw_vectors = np.array(embedding_model.encode(keyword_strings, convert_to_tensor=False)).astype('float32')
 
-    keyword_strings = []
-    for kw in keywords:
-        if hasattr(kw, 'keyword'):
-            keyword_strings.append(kw.keyword)
-        elif isinstance(kw, (list, tuple)) and len(kw) > 0:
-            keyword_strings.append(kw[0])
-        else:
-            # cas fallback
-            keyword_strings.append(str(kw))
-
-    input_kw_vectors = embedding_model.encode(keyword_strings, convert_to_tensor=False)
-    query_kw_vectors = np.array(input_kw_vectors).astype('float32')
-
-    # Étape 2 : extraction des vecteurs stockés
+    # Étape 2 : extraction des vecteurs stockés depuis SQLite
     try:
         cur.execute("SELECT conversation_id, keyword, vector FROM vectors")
         vector_rows = cur.fetchall()
@@ -311,9 +301,7 @@ def get_relevant_context(user_question, limit=None, similarity_threshold=0.2):
     if not vector_rows:
         return []
 
-    stored_kw_vectors = []
-    convo_ids = []
-
+    convo_ids, stored_kw_vectors = [], []
     for conv_id, keyword, vector in vector_rows:
         try:
             vec = np.frombuffer(vector, dtype='float32')
@@ -328,36 +316,33 @@ def get_relevant_context(user_question, limit=None, similarity_threshold=0.2):
 
     stored_kw_vectors = np.vstack(stored_kw_vectors).astype('float32')
 
-    # Vérification NaN / Inf
-    if np.isnan(stored_kw_vectors).any() or np.isinf(stored_kw_vectors).any():
-        return []
-    if np.isnan(query_kw_vectors).any() or np.isinf(query_kw_vectors).any():
+    # Vérifications
+    if any(np.isnan(arr).any() or np.isinf(arr).any() for arr in [stored_kw_vectors, query_kw_vectors]):
         return []
 
-    # Normalisation 
+    # Normalisation
     faiss.normalize_L2(stored_kw_vectors)
     faiss.normalize_L2(query_kw_vectors)
 
-    # Recherche brute par matrice
-    query_kw_vectors = query_kw_vectors / np.linalg.norm(query_kw_vectors, axis=1, keepdims=True)
-    stored_kw_vectors = stored_kw_vectors / np.linalg.norm(stored_kw_vectors, axis=1, keepdims=True)
+    query_kw_vectors /= np.linalg.norm(query_kw_vectors, axis=1, keepdims=True)
+    stored_kw_vectors /= np.linalg.norm(stored_kw_vectors, axis=1, keepdims=True)
     similarity_matrix = np.dot(query_kw_vectors, stored_kw_vectors.T)
 
-    # Top-k similaires
+    # Recherche top-k
     k = min(limit, stored_kw_vectors.shape[0])
     topk_indices = np.argsort(similarity_matrix, axis=1)[:, -k:][:, ::-1]
     topk_scores = np.take_along_axis(similarity_matrix, topk_indices, axis=1)
 
-    matched_convo_ids = set()
-    for scores_row, indices_row in zip(topk_scores, topk_indices):
-        for score, idx in zip(scores_row, indices_row):
-            if score >= similarity_threshold:
-                matched_convo_ids.add(convo_ids[idx])
+    matched_convo_ids = {
+        convo_ids[idx]
+        for scores_row, indices_row in zip(topk_scores, topk_indices)
+        for score, idx in zip(scores_row, indices_row) if score >= similarity_threshold
+    }
 
     if not matched_convo_ids:
         return []
 
-    # Score par conversation
+    # Calcul score par conversation
     convo_sim_scores = {cid: [] for cid in matched_convo_ids}
     for scores_row, indices_row in zip(topk_scores, topk_indices):
         for score, idx in zip(scores_row, indices_row):
@@ -365,22 +350,21 @@ def get_relevant_context(user_question, limit=None, similarity_threshold=0.2):
             if cid in convo_sim_scores and score >= similarity_threshold:
                 convo_sim_scores[cid].append(score)
 
-    final_sim_scores = {cid: max(scores) if scores else 0 for cid, scores in convo_sim_scores.items()}
+    final_sim_scores = {cid: max(scores) for cid, scores in convo_sim_scores.items()}
 
-    # Requête SQL pour récupérer les contextes
+    # Étape 3 : récupération des lignes de contexte
     placeholders_ids = ','.join(['?'] * len(matched_convo_ids))
-    query_contexts = f'''
+    cur.execute(f'''
         SELECT user_input, llm_output, llm_model, timestamp, id
         FROM conversations
         WHERE id IN ({placeholders_ids})
-    '''
-    cur.execute(query_contexts, list(matched_convo_ids))
+    ''', list(matched_convo_ids))
     context_rows = cur.fetchall()
 
     if not context_rows:
         return []
 
-    # Étape 3 : similarité entre user_question et user_input
+    # Étape 4 : rerank par similarité directe avec la user_question
     user_inputs = [row[0] for row in context_rows]
     user_question_vec = embedding_model.encode([user_question], convert_to_tensor=False)
     user_question_vec = np.array(user_question_vec[0]).astype('float32')
@@ -388,17 +372,16 @@ def get_relevant_context(user_question, limit=None, similarity_threshold=0.2):
 
     input_vectors = embedding_model.encode(user_inputs, convert_to_tensor=False)
     input_vectors = np.array(input_vectors).astype('float32')
-    input_vectors = input_vectors / np.linalg.norm(input_vectors, axis=1, keepdims=True)
+    input_vectors /= np.linalg.norm(input_vectors, axis=1, keepdims=True)
 
     rerank_scores = np.dot(input_vectors, user_question_vec)
 
-    # Construction du contexte avec scores rerankés
+    # Construction des objets de contexte
     filtered_context = []
     for i, (user_input, llm_output, llm_model, timestamp, convo_id) in enumerate(context_rows):
         score_kw = final_sim_scores.get(convo_id, 0)
         score_rerank = rerank_scores[i]
-
-        item = ContextData(
+        filtered_context.append(ContextData(
             user_input=user_input,
             llm_output=llm_output,
             score_kw=score_kw,
@@ -406,30 +389,26 @@ def get_relevant_context(user_question, limit=None, similarity_threshold=0.2):
             timestamp=timestamp,
             convo_id=convo_id,
             score_rerank=score_rerank
-        )
+        ))
 
-        filtered_context.append(item)
-
-    # Tri par score rerank décroissant
     filtered_context.sort(key=lambda x: x.combined_score, reverse=True)
-
     return filtered_context
 
 
-# Compression de texte
 def summarize(text, focus_terms=None, max_length=512):
-    #transformers_logging.set_verbosity_error()
     update_status("⚙️ Shortening of extracted context ...")
     root.update()
+
     try:
         if focus_terms:
-            sentences = [s.strip() for s in text.split('.') 
-                         if any(term.lower() in s.lower() for term in focus_terms)]
+            sentences = [
+                s.strip() for s in text.split('.') 
+                if any(term.lower() in s.lower() for term in focus_terms)
+            ]
             filtered_text = '. '.join(sentences)
             text = filtered_text if filtered_text else text
-            text = text[:2000]
+        text = text[:2000]
 
-        # Résumé avec le texte filtré
         result = summarizing_pipeline(
             text,
             max_new_tokens=max_length,
@@ -438,35 +417,27 @@ def summarize(text, focus_terms=None, max_length=512):
             do_sample=False,
             truncation=True
         )
-
-        raw_summary = result[0]['summary_text']
-        return raw_summary
+        return result[0]['summary_text']
     except Exception as e:
         print(f"[ERREUR] summarization : {type(e).__name__} - {e}")
         return text[:max_length] + "... [résumé tronqué]"
 
-    
-# Construction du prompt
+
 def generate_prompt_paragraph(context, question, keywords=None):
     update_status("⚙️ Prompt generation ...")
     root.update()
+
     if not context:
         return f"{question}"
-    # 1. Prétraitement
-    processed_items = []
-    limit=context_count_var.get() # Nombre max d'éléments dans le contexte
-    
-    for item in context[:limit]:  
-        try:
-            # Extraction sécurisée
 
+    processed_items = []
+    limit = context_count_var.get()
+
+    for item in context[:limit]:
+        try:
             user_input = str(item.user_input)[:300]
             llm_output = str(item.llm_output)
-
-            # Summarization, nettoyage, segmentation
-            formatted_llm_out = format_cleaner(llm_output)
-            summary = summarize(formatted_llm_out)
-
+            summary = summarize(format_cleaner(llm_output))
             processed_items.append({
                 'question': user_input,
                 'summary': summary,
@@ -479,32 +450,30 @@ def generate_prompt_paragraph(context, question, keywords=None):
     if not processed_items:
         return question
 
-    # 2. Construction du prompt
+    # Construction des blocs de prompt
     parts = []
-    # Partie questions
-    if processed_items:
-        questions = [f"'{item['question']}'" for item in processed_items]
-        if len(questions) == 1:
-            parts.append(f"Tes discussions avec l'utilisateur t'ont amené à répondre à cette question : {questions[0]}")
-        else:
-            *init, last = questions
-            parts.append(f"Tes discussions avec l'utilisateur t'ont amené à répondre à ces questions :  {', '.join(init)}, et enfin {last}")
 
-    # Partie mots-clés
+    # Questions
+    questions = [f"'{item['question']}'" for item in processed_items]
+    if len(questions) == 1:
+        parts.append(f"Tes discussions avec l'utilisateur t'ont amené à répondre à cette question : {questions[0]}")
+    else:
+        *init, last = questions
+        parts.append(f"Tes discussions avec l'utilisateur t'ont amené à répondre à ces questions : {', '.join(init)}, et enfin {last}")
 
+    # Mots-clés
     if keywords:
         parts.append(f"Mots-clés pertinents : {', '.join(sorted(keywords))}")
 
-
-    # Partie résumés
-    if processed_items:
-        summaries = [f"- {item['summary']}" for item in processed_items]
-        parts.append("Ces intéractions vous ont amené à discuter de ces sujets :\n" + "\n".join(summaries)+"\n")
+    # Résumés
+    summaries = [f"- {item['summary']}" for item in processed_items]
+    parts.append("Ces intéractions vous ont amené à discuter de ces sujets :\n" + "\n".join(summaries) + "\n")
 
     # Question actuelle
     parts.append(f"Réponds maintenant à cette question, dans le contexte de vos discussions précédentes : {question}")
 
     return "\n".join(parts)
+
 
 # === FONCTIONS PRINCIPALES ===
 
@@ -879,9 +848,6 @@ def show_infos():
     canvas_widget_model.pack(expand=True, fill="both", pady=(0, 0))
     plt.close(fig_model)
 
-
-
-
 # === INTERFACE TKINTER ===
 
 def update_status(message, error=False, success=False):
@@ -927,6 +893,14 @@ def show_help():
         wraplength=550
     )
     label.pack(fill=tk.BOTH, expand=True)
+
+def bring_to_front():
+    root.update()
+    root.deiconify()            
+    root.lift()               
+    root.attributes('-topmost', True)
+    root.after(200, lambda: root.attributes('-topmost', False)) 
+
 
 # === CONFIGURATION DE L'INTERFACE ===
 root.title("LLM Memorization")
@@ -1010,12 +984,12 @@ style.map("TNotebook.Tab",
           background=[("selected", "#323232"), ("active", "#2a2a2a")],
           foreground=[("selected", "white"), ("active", "white")])
 
-
 style.map('Bottom.TButton',
           background=[('active', '#457a3a'), ('pressed', '#2e4a20')],
           foreground=[('disabled', '#d9d9d9')])
 
-# Widgets principaux
+
+# === WIDGETS PRINCIPAUX ===
 main_frame = ttk.Frame(root, style='TFrame')
 main_frame.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
 
@@ -1030,33 +1004,33 @@ question_frame.pack(pady=(0, 5), fill='x', expand=True)
 entry_question = tk.Text(question_frame, height=4, width=80, wrap="word", font=('Segoe UI', 13))
 entry_question.pack(side="left", fill="both", expand=True)
 
-# Configuration du style pour la scrollbar
-style = ttk.Style()
+# Scrollbar personnalisée
 style.configure("Vertical.TScrollbar",
-    troughcolor='#FDF6EE',
-    background='#C0C0C0',
-    darkcolor='#C0C0C0',
-    lightcolor='#C0C0C0',
-    bordercolor='#FDF6EE',
-    arrowcolor='black',
-    relief='flat')
+                troughcolor='#FDF6EE',
+                background='#C0C0C0',
+                darkcolor='#C0C0C0',
+                lightcolor='#C0C0C0',
+                bordercolor='#FDF6EE',
+                arrowcolor='black',
+                relief='flat')
 
 scrollbar = ttk.Scrollbar(
     question_frame,
     orient="vertical",
     command=entry_question.yview,
-    style="Vertical.TScrollbar"  # Application du style
+    style="Vertical.TScrollbar"
 )
 scrollbar.pack(side="right", fill="y")
-
 entry_question.config(yscrollcommand=scrollbar.set)
+
 entry_question.bind("<Return>", lambda event: on_ask())
 
-# Frame horizontale principale
+
+# === CONTROLS & SLIDERS ===
+
 control_frame = ttk.Frame(main_frame, style='TFrame')
 control_frame.pack(fill='x', pady=(0, 10), padx=5)
 
-# Sliders
 slider_keywords_frame = ttk.Frame(control_frame, style='TFrame')
 slider_keywords_frame.grid(row=0, column=0, sticky='w')
 
@@ -1091,11 +1065,10 @@ slider_contexts = ttk.Scale(
 )
 slider_contexts.pack(anchor='w')
 
-# Boutons synchronisation et percuteur
 button_frame = ttk.Frame(control_frame, style='TFrame')
 button_frame.grid(row=0, column=2, sticky='e')
 
-sync_button = ttk.Button(button_frame, text="Synchronize conversations", 
+sync_button = ttk.Button(button_frame, text="Synchronize conversations",
                          command=sync_conversations, style='Green.TButton')
 sync_button.pack(side='left', padx=5)
 
@@ -1103,7 +1076,8 @@ btn_ask = ttk.Button(button_frame, text="Generate prompt", command=on_ask, style
 btn_ask.pack(side='left', padx=5)
 control_frame.grid_columnconfigure(2, weight=1)
 
-# Zone de sortie étendable
+
+# === ZONE DE SORTIE ÉTENDABLE ===
 output_expanded = tk.BooleanVar(value=False)
 
 def toggle_output():
@@ -1121,64 +1095,69 @@ def toggle_output():
 output_frame = ttk.Frame(main_frame, style='TFrame')
 output_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
-
-
-# Bouton pour étendre/cacher
 toggle_btn = ttk.Button(
     output_frame,
     text="▼ Show result",
     command=toggle_output,
-    style='Green.TButton'  # Utilise le même style que tes autres boutons
+    style='Green.TButton'
 )
 toggle_btn.pack(fill=tk.X, pady=(0, 5))
 
 text_output = scrolledtext.ScrolledText(
-    output_frame, 
-    width=100, 
+    output_frame,
+    width=100,
     height=20,
-    font=('Segoe UI', 13), 
-    wrap=tk.WORD, 
-    bg="#FDF6EE", 
-    fg="black", 
+    font=('Segoe UI', 13),
+    wrap=tk.WORD,
+    bg="#FDF6EE",
+    fg="black",
     insertbackground="black"
 )
 
-# Clics droits sur les zones de texte
+# === MENU CONTEXTE (clic droit) ===
 
-context_menu = tk.Menu(text_output, tearoff=0)
-context_menu.add_command(label="Copy", command=lambda: text_output.event_generate("<<Copy>>"))
+# Détection de l'OS
+if platform.system() == "Darwin":
+    right_click_event = "<Button-2>"
+else:
+    right_click_event = "<Button-3>"
 
-def show_context_menu(event):
-    context_menu.tk_popup(event.x_root, event.y_root)
+output_context_menu = tk.Menu(text_output, tearoff=0)
+output_context_menu.add_command(label="Copier", command=lambda: text_output.event_generate("<<Copy>>"))
+output_context_menu.add_command(label="Coller", command=lambda: text_output.event_generate("<<Paste>>"))
+output_context_menu.add_command(label="Tout sélectionner", command=lambda: text_output.tag_add("sel", "1.0", "end"))
 
-text_output.bind("<Button-3>", show_context_menu)
+def show_output_context_menu(event):
+    try:
+        output_context_menu.tk_popup(event.x_root, event.y_root)
+    finally:
+        output_context_menu.grab_release()
+
+text_output.bind(right_click_event, show_output_context_menu)
+
+# Menu contextuel pour entry_question (zone de question)
+question_context_menu = tk.Menu(entry_question, tearoff=0)
+question_context_menu.add_command(label="Copier", command=lambda: entry_question.event_generate("<<Copy>>"))
+question_context_menu.add_command(label="Coller", command=lambda: entry_question.event_generate("<<Paste>>"))
+question_context_menu.add_command(label="Tout sélectionner", command=lambda: entry_question.tag_add("sel", "1.0", "end"))
+
+def show_question_context_menu(event):
+    try:
+        question_context_menu.tk_popup(event.x_root, event.y_root)
+    finally:
+        question_context_menu.grab_release()
+
+entry_question.bind(right_click_event, show_question_context_menu)
+
+# Ajouter aussi aux frames si nécessaire
+question_frame.bind(right_click_event, show_question_context_menu)
+output_frame.bind(right_click_event, show_output_context_menu)
 
 
-question_menu = tk.Menu(entry_question, tearoff=0)
-question_menu.add_command(label="Paste", command=lambda: entry_question.event_generate("<<Paste>>"))
-
-def show_question_menu(event):
-    question_menu.tk_popup(event.x_root, event.y_root)
-
-entry_question.bind("<Button-3>", show_question_menu)
-
-
-
-#text_output.bind("<Button-3>", show_context_menu)
-
-    #for (convo_id, user_input, llm_output, timestamp, kws, score) in filtered_context
-    #for (kw_lemma, weight, freq) in filtered_keywords
-
-    # On récupère les infos de la question initiales
-    #question_vector = np.array(vec[0], dtype='float32')
-
-
-
-# Barre de statut et boutons
+# === BARRE DE STATUT ET BOUTONS ===
 status_buttons_frame = ttk.Frame(main_frame, style='TFrame')
 status_buttons_frame.pack(fill=tk.X, pady=(5, 2))
 
-# Barre de statut
 label_status = ttk.Label(
     status_buttons_frame,
     text="Ready",
@@ -1188,7 +1167,6 @@ label_status = ttk.Label(
 )
 label_status.pack(side=tk.LEFT, anchor='w')
 
-# Boutons Info et Aide
 right_buttons = ttk.Frame(status_buttons_frame, style='TFrame')
 right_buttons.pack(side=tk.RIGHT, anchor='e')
 
@@ -1198,7 +1176,8 @@ btn_info.pack(side=tk.TOP, pady=(0, 3))
 btn_help = ttk.Button(right_buttons, text="Help", style='Bottom.TButton', command=show_help, width=8)
 btn_help.pack(side=tk.TOP)
 
-# Footer - inchangé
+
+# === FOOTER ===
 footer_frame = ttk.Frame(root, style='TFrame')
 footer_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 5))
 
@@ -1208,5 +1187,7 @@ dev_label.pack(side=tk.LEFT)
 github_link = ttk.Label(footer_frame, text="GitHub", style='Blue.TLabel', cursor="hand2")
 github_link.pack(side=tk.LEFT)
 github_link.bind("<Button-1>", open_github)
+
+bring_to_front()
 
 root.mainloop()
