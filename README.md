@@ -127,7 +127,7 @@ ______
   - Green Chemistry & Catalysis `(FR)`
   - Pharmaceutical Applications & AI `(FR)`
   - Photoactivable Molecules & Photocontrol `(FR)`
-  - Plant Science @ Biostimulants `(FR)`
+  - Plant Science & Biostimulants `(FR)`
   - Cross-disciplinary Tools `(FR)`
   - OLED Materials `(EN)`
   - Machine Learning in Agrochemistry `(EN)`
