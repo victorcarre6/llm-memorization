@@ -1,4 +1,4 @@
-# How to setup a clean shortcut to open the script directly from your Mac Dock
+# How to setup a shortcut to open the script from your Mac Dock
 
 You can easily do this using the built-in Shortcuts app on macOS.
 
