@@ -433,7 +433,7 @@ def summarize(text, focus_terms=None, max_length=512):
         return text[:max_length] + "... [résumé tronqué]"
 
 
-def generate_prompt_paragraph(context, question, keywords=None):
+def generate_prompt_paragraph(context, question, keywords=None, lang="fr"):
     update_status("⚙️ Prompt generation ...")
     root.update()
 
@@ -465,22 +465,29 @@ def generate_prompt_paragraph(context, question, keywords=None):
 
     # Questions
     questions = [f"'{item['question']}'" for item in processed_items]
-    if len(questions) == 1:
-        parts.append(f"Tes discussions avec l'utilisateur t'ont amené à répondre à cette question : {questions[0]}")
+    if lang == "en":
+        if len(questions) == 1:
+            parts.append(f"Your previous conversations led you to answer the following question: {questions[0]}")
+        else:
+            *init, last = questions
+            parts.append(f"Your previous conversations led you to answer the following questions: {', '.join(init)}, and finally {last}")
     else:
-        *init, last = questions
-        parts.append(f"Tes discussions avec l'utilisateur t'ont amené à répondre à ces questions : {', '.join(init)}, et enfin {last}")
+        if len(questions) == 1:
+            parts.append(f"Tes discussions avec l'utilisateur t'ont amené à répondre à cette question : {questions[0]}")
+        else:
+            *init, last = questions
+            parts.append(f"Tes discussions avec l'utilisateur t'ont amené à répondre à ces questions : {', '.join(init)}, et enfin {last}")
 
-    # Mots-clés
-    if keywords:
-        parts.append(f"Mots-clés pertinents : {', '.join(sorted(keywords))}")
 
-    # Résumés
+
+    # Résumés et question de base
     summaries = [f"- {item['summary']}" for item in processed_items]
-    parts.append("Ces intéractions vous ont amené à discuter de ces sujets :\n" + "\n".join(summaries) + "\n")
-
-    # Question actuelle
-    parts.append(f"Réponds maintenant à cette question, dans le contexte de vos discussions précédentes : {question}")
+    if lang == "en":
+        parts.append("These discussions involved the following topics:\n" + "\n".join(summaries) + "\n")
+        parts.append(f"Now, answer this question in the context of those previous discussions: {question}")
+    else:
+        parts.append("Ces intéractions vous ont amené à discuter de ces sujets :\n" + "\n".join(summaries) + "\n")
+        parts.append(f"Réponds maintenant à cette question, dans le contexte de vos discussions précédentes : {question}")
 
     return "\n".join(parts)
 
@@ -523,7 +530,9 @@ def on_ask():
         start_time = time.time()
         #print(f"Language detected: {lang}")
         context = get_relevant_context(question, limit=context_count_var.get()) #", limit=context_count_var.get()" ajoutée slider contexte
-        prompt = generate_prompt_paragraph(context, question)
+        pipeline = LanguagePipeline(question)
+        lang = pipeline.lang
+        prompt = generate_prompt_paragraph(context, question, lang=lang)
         final_prompt = prompt
         
         pyperclip.copy(prompt)
