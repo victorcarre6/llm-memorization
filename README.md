@@ -113,6 +113,9 @@ ______
 ```bash
 ./llm_memorization.command
 ```
+
+or read the README.md in `/mac_shortcut` to install a shortcut that launch the script directly from your dock.
+
 ______
 
 ## Notes
