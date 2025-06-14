@@ -2,7 +2,7 @@ import os
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 model_name = "plguillou/t5-base-fr-sum-cnndm"
-local_dir = "./resources/models/plguillou/t5-base-fr-sum-cnndm"
+local_dir = "./resources/models/t5-base-fr-sum-cnndm"
 
 os.makedirs(local_dir, exist_ok=True)
 
