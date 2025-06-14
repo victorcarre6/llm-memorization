@@ -60,6 +60,7 @@ The `llm_cortexpander.py` script, executable via `llm_memorization.command` :
 ## 3. Add it to your dock !
 
 <p align="center">
+  
 ![Capture d’écran 2025-06-15 à 00 31 04](https://github.com/user-attachments/assets/d6af8c46-4067-425f-83f1-8b67a6237da0)
 </p>
 
