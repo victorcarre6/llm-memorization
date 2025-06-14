@@ -57,11 +57,13 @@ The `llm_cortexpander.py` script, executable via `llm_memorization.command` :
 ![Capture d’écran 2025-06-14 à 15 36 25](https://github.com/user-attachments/assets/116c197c-9d8d-4654-ab16-cc0b601f46ce)
 <img width="1604" alt="image" src="https://github.com/user-attachments/assets/e17b574b-bf9c-4275-977d-ea6b56406c7d" />
 
-## Last Update
+## 3. Add it to your dock !
 
-![image](https://github.com/user-attachments/assets/20b329be-2f19-4f89-8b47-040bfb7d0cfd)
+<p align="center">
+![Capture d’écran 2025-06-15 à 00 31 04](https://github.com/user-attachments/assets/d6af8c46-4067-425f-83f1-8b67a6237da0)
+</p>
 
-A guide to add the script to the dock on a Mac : see `mac-shortcut`.
+For a guide to add the script to your dock (on a Mac), see : `mac-shortcut`.
 
 
 ## Future Directions
