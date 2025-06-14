@@ -96,7 +96,7 @@ python -m spacy download en_core_web_lg
 ```bash
 python scripts/model_download.py
 ```
-  - Or via GitLFS (in the `model` folder)
+  - Or via GitLFS (see `Notes` bellow)
 
 5. Directory structure
 
@@ -115,11 +115,11 @@ ______
 
 - These scripts work with LM Studio but can be adapted to any software providing conversations in `.json` format.
 
-- The choice of [`plguillou/t5-base-fr-sum-cnndm`](https://huggingface.co/plguillou/t5-base-fr-sum-cnndm) was based on its size, power, and hardware requirements (4 GB free RAM needed). The main goal was to find a good compromise to keep query response times under about ten seconds. This model is multilingual, allowing the script to work with both French and English conversations. 
 
-- he model can be changed by inserting a Hugging Face link in  `config.json` under the `model` label.
 
-- LThe script applies a multiplier factor (default 2) to the requested number of extracted keywords to obtain more raw keywords, then filters irrelevant ones to ensure a sufficient, high-quality final set. This multiplier is configurable in `config.json` under `keyword_multiplier`.
+- The script applies a multiplier factor (default 2) to the requested number of extracted keywords to obtain more raw keywords, then filters irrelevant ones to ensure a sufficient, high-quality final set. This multiplier is configurable in `config.json` under `keyword_multiplier`.
+
+### About the conversations.db database
 
 - A French stop-word dictionary is used to eliminate irrelevant keywords (coordinating conjunctions, prepositions, etc.). The file `data/stopwords_fr.json`can be modified to keep or remove specific keywords. This dictionary can be replaced with a custom file via the `stopwords_file_path` label in `config.json`.
 
@@ -133,3 +133,33 @@ ______
   - Machine Learning in Agrochemistry `(EN)`
 
 - To avoid syncing conversations, they can be hidden in `~/.lmstudio/conversations/unsync`.
+
+### Summarizing Model
+
+The script uses the model [`plguillou/t5-base-fr-sum-cnndm`](https://huggingface.co/plguillou/t5-base-fr-sum-cnndm), selected for its good balance between performance and hardware requirements (4 GB of free RAM). This multilingual model allows summarization of both French and English conversations, keeping response times under 30 seconds.
+
+You can configure the summarization model in config.json via the summarizing_model key, using either:
+
+```bash
+"summarizing_model": "plguillou/t5-base-fr-sum-cnndm"    // Hugging Face model (loaded online)
+"summarizing_model": "resources/models/t5-base-fr-sum-cnndm"  // Local model (directory path)
+```
+
+If the Hugging Face model is unreachable (e.g. offline usage), the script will automatically fall back to the local model if the directory exists.
+
+➤ Local model setup with GitLFS
+
+1. Install Git LFS (if not already installed):
+
+```bash
+git lfs install
+```
+2. Pull the model from the repository:
+
+```bash
+git lfs pull
+```
+
+The model file will appear here: `resources/models/t5-base-fr-sum-cnndm/model.safetensors`
+
+Make sure your config.json points to this local folder: `"summarizing_model": "resources/models/t5-base-fr-sum-cnndm"`
