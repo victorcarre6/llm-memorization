@@ -64,7 +64,7 @@ The `llm_cortexpander.py` script, executable via `llm_memorization.command` :
 </p>
 
 
-For a guide to add the script to your dock (on a Mac), see : `mac-shortcut`.
+For a guide to add the script to your dock (on a Mac), see the How To in the `mac_shortcut` directory.
 
 
 ## Future Directions
