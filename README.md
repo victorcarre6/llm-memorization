@@ -100,7 +100,7 @@ python scripts/model_download.py
 
 5. Directory structure
 
-The `config.json` file at the root contains the paths required for the scripts to function properly.
+- The `config.json` file at the root contains the paths required for the scripts to function properly.
 
 ______
 
