@@ -57,6 +57,13 @@ The `llm_cortexpander.py` script, executable via `llm_memorization.command` :
 ![Capture d’écran 2025-06-14 à 15 36 25](https://github.com/user-attachments/assets/116c197c-9d8d-4654-ab16-cc0b601f46ce)
 <img width="1604" alt="image" src="https://github.com/user-attachments/assets/e17b574b-bf9c-4275-977d-ea6b56406c7d" />
 
+## Last Update
+
+![image](https://github.com/user-attachments/assets/20b329be-2f19-4f89-8b47-040bfb7d0cfd)
+
+A guide to add the script to the dock on a Mac : see `mac-shortcut`.
+
+
 ## Future Directions
 
 - Enhance the existing database visualization to provide clearer insights into user data (e.g. interactive topic maps, conversation heatmaps).
