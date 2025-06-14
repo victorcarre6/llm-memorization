@@ -32,7 +32,7 @@ ______
 
 ### 1. Conversation extraction
 
-The `import_lmstudio.py` script scans the LM Studio conversations folder, reads all `.json` files, and extracts `(input, output, model)` datas.
+The `sync_lmstudio.py` script scans the LM Studio conversations folder, reads all `.json` files, and extracts `(input, output, model)` datas.
 
 Each exchange is:  
 - Stored in the table `conversations`.  
@@ -42,7 +42,7 @@ Each exchange is:
 
 ### 2. Prompt Enhancement
 
-The `enhancer.py` script, executable via `prompt_enhancer.command` :
+The `llm_cortexpander.py` script, executable via `llm_memorization.command` :
 
 - Takes the initial question, 
 - Extracts the corresponding keywords, 
@@ -119,13 +119,11 @@ ______
 
 - These scripts work with LM Studio but can be adapted to any software providing conversations in `.json` format.
 
-
-
 - The script applies a multiplier factor (default 2) to the requested number of extracted keywords to obtain more raw keywords, then filters irrelevant ones to ensure a sufficient, high-quality final set. This multiplier is configurable in `config.json` under `keyword_multiplier`.
 
 ### About the conversations.db database
 
-- A French stop-word dictionary is used to eliminate irrelevant keywords (coordinating conjunctions, prepositions, etc.). The file `data/stopwords_fr.json`can be modified to keep or remove specific keywords. This dictionary can be replaced with a custom file via the `stopwords_file_path` label in `config.json`.
+- A French stop-word dictionary is used to eliminate irrelevant keywords (coordinating conjunctions, prepositions, etc.). The file `resources/stopwords_fr.json`can be modified to keep or remove specific keywords. This dictionary can be replaced with a custom file via the `stopwords_file_path` label in `config.json`.
 
 - Example database: ~200 Q&A pairs with OpenChat-3.5, Mistral-7B and DeepSeek-Coder-6.7B on topics including :
   - Green Chemistry & Catalysis `(FR)`
