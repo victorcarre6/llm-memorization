@@ -53,10 +53,13 @@ The `enhancer.py` script, executable via `prompt_enhancer.command` :
   - Help window,
   - Data analysis window.
 
- ![Capture d’écran 2025-06-13 à 20 51 50](https://github.com/user-attachments/assets/0ec61f92-eda2-40c5-8579-99bee84e6204)
+![Capture d’écran 2025-06-14 à 15 36 25](https://github.com/user-attachments/assets/116c197c-9d8d-4654-ab16-cc0b601f46ce)
 <img width="1604" alt="image" src="https://github.com/user-attachments/assets/e17b574b-bf9c-4275-977d-ea6b56406c7d" />
 
+## Future Directions
 
+- Enhance the existing database visualization to provide clearer insights into user data (e.g. interactive topic maps, conversation heatmaps).
+- Transform the script into an LM Studio plugin, to enable seamless prompt enhancement and real-time analytics directly within the interface.
 ______
 
 ## Installation
