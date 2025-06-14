@@ -4,7 +4,7 @@
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Charger la config.json dans des variables shell
-CONFIG_FILE="$PROJECT_DIR/config.json"
+CONFIG_FILE="$PROJECT_DIR/resources/config.json"
 if [ ! -f "$CONFIG_FILE" ]; then
   echo "Erreur : fichier config.json introuvable dans $PROJECT_DIR"
   read -p "Press Enter to close..."
