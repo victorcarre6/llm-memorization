@@ -22,6 +22,7 @@ ______
   - Data visualization :
     - Information on the generated prompt based on keywords.
     - Insights on the conversation database.
+- Supports both French and English conversations and prompts, for bilingual use.
     
 ______
 
@@ -134,6 +135,7 @@ ______
   - Cross-disciplinary Tools `(FR)`
   - OLED Materials `(EN)`
   - Machine Learning in Agrochemistry `(EN)`
+It is highly advised to build your own database in order to have prompts generated in a single language only.
 
 - To avoid syncing conversations, they can be hidden in `~/.lmstudio/conversations/unsync`.
 
