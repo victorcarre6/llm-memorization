@@ -1,4 +1,4 @@
-# LLM Memorization
+# Local LLM Memorization
 
 > A project to index, archive, and search conversations with a local LLM (accessed via a library like LM Studio) using a SQLite database enriched with automatically extracted keywords.
 
