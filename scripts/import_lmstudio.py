@@ -20,7 +20,7 @@ from langdetect import detect
 
 # --- Chargement de la configuration ---
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-with open(os.path.join(PROJECT_ROOT, "config.json")) as f:
+with open(os.path.join(PROJECT_ROOT, "resources", "config.json")) as f:
     raw_config = json.load(f)
 def normalize_path(value):
     if isinstance(value, str):
@@ -32,13 +32,12 @@ def normalize_path(value):
 
 config = {key: normalize_path(value) for key, value in raw_config.items()}
 
-stopwords_path = config.get("stopwords_file_path", "stopwords_fr.json")
-with open(stopwords_path, "r", encoding="utf-8") as f:
-    french_stopwords = set(json.load(f))
-
 DB_PATH = config["db_path"]
 FOLDER_PATH = os.path.expanduser(config["lmstudio_folder_path"])
 EXTENSIONS = ['.json']
+stopwords_path = config["stopwords_file_path"]
+with open(stopwords_path, "r", encoding="utf-8") as f:
+    french_stopwords = set(json.load(f))
 
 def clock():
     return datetime.now().strftime("[%H:%M:%S]")

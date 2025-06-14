@@ -1,4 +1,4 @@
-# LLM Memorization & Prompt Enhancer
+# LLM Memorization
 
 > A project to index, archive, and search conversations with a local LLM (accessed via a library like LM Studio) using a SQLite database enriched with automatically extracted keywords.
 
@@ -10,7 +10,7 @@
 
 ______
 
-## Objectifs
+## Project
 
 - Automate queries from local LLM conversational management libraries (LM Studio, Transformer Labs, Ollama, ...) to build a SQLite database.
 - Hybrid search function to find the most relevant contexts in the database:

@@ -31,7 +31,7 @@ from keybert import KeyBERT
 
 # --- Configuration projet & chargement du fichier config ---
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-config_path = os.path.join(PROJECT_ROOT, "config.json")
+config_path = os.path.join(PROJECT_ROOT, "resources", "config.json")
 
 def expand_path(value):
     expanded = os.path.expanduser(value)
@@ -74,7 +74,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
 
 # --- Chargement des stopwords ---
-stopwords_path = config.get("stopwords_file_path", "stopwords_fr.json")
+stopwords_path = config["stopwords_file_path"]
 with open(stopwords_path, "r", encoding="utf-8") as f:
     french_stop_words = set(json.load(f))
 
@@ -97,10 +97,20 @@ cur = conn.cursor()
 VECTOR_DIM = 384
 faiss_index = faiss.IndexFlatL2(VECTOR_DIM)
 
-# --- Initialisation des modèles ---
+# --- Initialisation des modèles avec fallback modèle local ---
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-tokenizer = T5Tokenizer.from_pretrained("plguillou/t5-base-fr-sum-cnndm")
-summarizing_model = T5ForConditionalGeneration.from_pretrained("plguillou/t5-base-fr-sum-cnndm")
+
+model_name = config.get("summarizing_model", "plguillou/t5-base-fr-sum-cnndm")
+local_model_dir = os.path.join(PROJECT_ROOT, "resources", "models", "t5-base-fr-sum-cnndm")
+try:
+    tokenizer = T5Tokenizer.from_pretrained(model_name)
+    summarizing_model = T5ForConditionalGeneration.from_pretrained(model_name)
+except Exception as e:
+    print("Modèle introuvable sur Hugging Face, chargement local en cours...")
+    if not os.path.exists(local_model_dir):
+        raise FileNotFoundError(f"Le modèle local {local_model_dir} est introuvable.")
+    tokenizer = T5Tokenizer.from_pretrained(local_model_dir)
+    summarizing_model = T5ForConditionalGeneration.from_pretrained(local_model_dir)
 summarizing_pipeline = pipeline(task="summarization", model=summarizing_model, tokenizer=tokenizer, framework="pt")
 
 # === STRUCTURES DE DONNÉES ===
@@ -863,17 +873,6 @@ def open_github(event):
     webbrowser.open_new("https://github.com/victorcarre6")
 
 def show_help():
-    help_text = (
-        "LLM Memorization and Prompt Enhancer — Help\n\n"
-        "• Sync conversations: Adds the latest exchanges from LM Studio to your local database.\n"
-        "• Generate prompt: Extracts the keywords from your question, searches for similar past conversations in your SQL database, and summarizes the relevant content using a local LLM."
-        "The final prompt is displayed and automatically copied to your clipboard!\n"
-        "• More: Opens an advanced statistics panel, including:"
-        "   Visualization of keywords extracted from your question and from the generated prompt."
-        "   Correlation graphs between the keywords."
-        "   Database insights: total number of keywords, most frequent ones, and which LLM models were used.\n"
-        "To learn more, troubleshoot potential script issues, or get in touch, visit: github.com/victorcarre6/llm-memorization."
-    )
     help_window = tk.Toplevel(root)
     help_window.title("Help")
     help_window.geometry("600x250")
@@ -881,8 +880,29 @@ def show_help():
     help_window.resizable(False, False)
 
     frame = tk.Frame(help_window, bg="#323232")
-    frame.pack(padx=20, pady=20, fill=tk.BOTH, expand=True)
+    frame.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
 
+    title_label = tk.Label(
+        frame,
+        text="LLM Memorization — Don't panic !",
+        font=("Segoe UI", 12, "bold"),
+        bg="#323232",
+        fg="white",
+        justify=tk.CENTER
+    )
+    title_label.pack(fill=tk.X, pady=(0, 2))
+
+    help_text = (
+        "• Sync conversations: Adds the latest exchanges from LM Studio to your local database.\n\n"
+        "• Generate prompt: Extracts the keywords from your question, searches for similar past conversations in your SQL database, and summarizes the relevant content using a local LLM.\n"
+        "   The final prompt is displayed and automatically copied to your clipboard!\n\n"
+        "• More: Opens an advanced statistics panel, including:\n"
+        "   Visualization of keywords extracted from your question and from the generated prompt.\n"
+        "   Correlation graphs between the keywords.\n"
+        "   Database insights: number and frequency of keywords, and used LLM models.\n\n"
+        "To learn more, troubleshoot potential script issues, or get in touch, visit:\n"
+        "github.com/victorcarre6/llm-memorization."
+    )
     label = tk.Label(
         frame,
         text=help_text,
@@ -893,6 +913,7 @@ def show_help():
         wraplength=550
     )
     label.pack(fill=tk.BOTH, expand=True)
+
 
 def bring_to_front():
     root.update()

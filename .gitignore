@@ -199,9 +199,6 @@ cython_debug/
 .LSOverride
 
 # Spécifique à ce projet
-model/barthez-orangesum-abstract/model.safetensorsmodel/barthez-orangesum-abstract/model.safetensors
-scripts/old/
-scripts/enhancer.ipynb
-tempo.md
-/lm-studio-memorization/
+lab/
 datas/conversations.db
+models/barthez-orangesum-abstract/model.safetensorsmodel/barthez-orangesum-abstract/model.safetensors
