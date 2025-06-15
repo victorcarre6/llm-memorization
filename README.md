@@ -132,7 +132,7 @@ ______
 
 - These scripts work with LM Studio but can be adapted to any software providing conversations in `.json` format.
 
-- The script applies a multiplier factor (default 2) to the requested number of extracted keywords to obtain more raw keywords, then filters irrelevant ones to ensure a sufficient, high-quality final set. This multiplier is configurable in `config.json` under `keyword_multiplier`.
+
 
 ### About the conversations.db database
 
@@ -148,6 +148,12 @@ ______
 It is highly advised to build your own database in order to have prompts generated in a single language only.
 
 - To avoid syncing conversations, they can be hidden in `~/.lmstudio/conversations/unsync`.
+
+### Keyword and context extraction
+
+- The script applies a multiplier factor (default 2) to the requested number of extracted keywords to obtain more raw keywords, then filters irrelevant ones to ensure a sufficient, high-quality final set. This multiplier is configurable in `config.json` under `keyword_multiplier`.
+
+- A similarity threshold is used to fine-tune the selection the most relevant contexts. You can change its value  in `config.json` under the key `similarity_threshold` (0.2 by default). Based on my testing, values above 0.35 tend to exclude relevant contexts and are therefore not recommended.
 
 ### Summarizing Model
 
