@@ -138,10 +138,9 @@ ______
 
 - A French stop-word dictionary is used to eliminate irrelevant keywords (coordinating conjunctions, prepositions, etc.). The file `resources/stopwords_fr.json`can be modified to keep or remove specific keywords. This dictionary can be replaced with a custom file via the `stopwords_file_path` label in `config.json`.
 
-- Example database: ~200 Q&A pairs with OpenChat-3.5, Mistral-7B and DeepSeek-Coder-6.7B on topics including :
+- `datas/database_example.db`: ~100 Q&A pairs with OpenChat-3.5, Mistral-7B and DeepSeek-Coder-6.7B on topics including :
   - Green Chemistry & Catalysis `(FR)`
   - Pharmaceutical Applications & AI `(FR)`
-  - Photoactivable Molecules & Photocontrol `(FR)`
   - Plant Science & Biostimulants `(FR)`
   - Cross-disciplinary Tools `(FR)`
   - OLED Materials `(EN)`
