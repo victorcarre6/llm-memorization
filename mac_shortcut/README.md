@@ -12,6 +12,9 @@ You can easily do this using the built-in Shortcuts app on macOS.
 
 - Right-click on the shortcut tile, and enable "Add to Dock".
 
-![image](https://github.com/user-attachments/assets/34d2ad08-becc-4b72-8e25-2fed7ceb4c5f)
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/34d2ad08-becc-4b72-8e25-2fed7ceb4c5f" alt="Capture d’écran" />
+</p>
+
 
 - Enjoy !
