@@ -6,5 +6,6 @@
   "db_path": "datas/conversations.db",
   "stopwords_file_path": "resources/stopwords_fr.json",
   "summarizing_model": "plguillou/t5-base-fr-sum-cnndm",
-  "keyword_multiplier": 2
+  "keyword_multiplier": 2,
+  "similarity_threshold": 0.2
 }

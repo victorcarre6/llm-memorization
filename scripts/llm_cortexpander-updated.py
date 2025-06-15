@@ -287,12 +287,12 @@ def nlp_clean_text(text, max_chunk_size=500):
 
 # --- FONCTIONS SECONDAIRES : CONTEXTE ET PROMPT ---
 
-def get_relevant_context(user_question, limit=None):
+def get_relevant_context(user_question, context_limit=None):
     global filtered_context
 
     # Détermination de la limite
-    if limit is None:
-        limit = context_count_var.get()
+    if context_limit is None:
+        context_limit = context_count_var.get()
 
     # Étape 1 : extraction des mots-clés et encodage
     keywords = extract_keywords(user_question)
@@ -340,7 +340,7 @@ def get_relevant_context(user_question, limit=None):
     similarity_matrix = np.dot(query_kw_vectors, stored_kw_vectors.T)
 
     # Recherche top-k
-    k = min(limit, stored_kw_vectors.shape[0])
+    k = min(context_limit, stored_kw_vectors.shape[0])
     topk_indices = np.argsort(similarity_matrix, axis=1)[:, -k:][:, ::-1]
     topk_scores = np.take_along_axis(similarity_matrix, topk_indices, axis=1)
 
@@ -402,6 +402,7 @@ def get_relevant_context(user_question, limit=None):
             score_rerank=score_rerank
         ))
 
+
     filtered_context.sort(key=lambda x: x.combined_score, reverse=True)
     return filtered_context
 
@@ -440,13 +441,14 @@ def generate_prompt_paragraph(context, question, keywords=None, lang="fr"):
     root.update()
 
     if not context:
+        context_count = 0
         return f"{question}"
 
     processed_items = []
-    limit = context_count_var.get()
+    context_limit = context_count_var.get()
     context_count = 0
 
-    for item in context[:limit]:
+    for item in context[:context_limit]:
         try:
             user_input = str(item.user_input)[:300]
             llm_output = str(item.llm_output)
@@ -491,7 +493,7 @@ def generate_prompt_paragraph(context, question, keywords=None, lang="fr"):
         parts.append("These discussions involved the following topics:\n" + "\n".join(summaries) + "\n")
         parts.append(f"Now, answer this question in the context of those previous discussions: {question}")
     else:
-        parts.append("Ces interactions vous ont amené à discuter de ces sujets :\n" + "\n".join(summaries) + "\n")
+        parts.append("Ces intéractions vous ont amené à discuter de ces sujets :\n" + "\n".join(summaries) + "\n")
         parts.append(f"Réponds maintenant à cette question, dans le contexte de vos discussions précédentes : {question}")
 
     return "\n".join(parts)
@@ -534,7 +536,7 @@ def on_ask():
     try:
         start_time = time.time()
         #print(f"Language detected: {lang}")
-        context = get_relevant_context(question, limit=context_count_var.get()) #", limit=context_count_var.get()" ajoutée slider contexte
+        context = get_relevant_context(question, context_limit=context_count_var.get()) #", limit=context_count_var.get()" ajoutée slider contexte
         pipeline = LanguagePipeline(question)
         lang = pipeline.lang
         prompt = generate_prompt_paragraph(context, question, lang=lang)
@@ -545,15 +547,13 @@ def on_ask():
         text_output.insert(tk.END, prompt)
         
         # Calcul des métriques
-        context_count_total = len(context)
         token_count = len(prompt.split())
         end_time = time.time()
         elapsed_time = round(end_time - start_time, 2)
         update_status(
-        f"✅ Prompt generated ({token_count} tokens in {round(elapsed_time)} sec).\n"
-        f"Extracted context: {context_count_total} element{'s' if context_count > 1 else ''}.\n"
-        f"Incorporated context: {context_count} element{'s' if context_count > 1 else ''}.",
-        success=True)
+        f"✅ Prompt generated ({token_count} tokens in {elapsed_time} sec) | Context used: {context_count} element{'s' if context_count_var.get() > 1 else ''}",
+        success=True
+)
     except Exception as e:
         update_status(f"❌ Erreur : {str(e)}", error=True)
 
@@ -681,18 +681,21 @@ def show_infos():
         kw_lemmas = [kw.kw_lemma for kw in filtered_keywords]
         embeddings = embedding_model.encode(kw_lemmas)
 
-        # Calcul des similarités cosinus
+        # Calcul des similarités cosinus et rescaling
         sim_matrix = cosine_similarity(embeddings)
+        min_sim = sim_matrix.min()
+        max_sim = sim_matrix.max()
+        rescaled_sim = (sim_matrix - min_sim) / (max_sim - min_sim + 1e-8)  # éviter div/0
 
         # Création de la figure matplotlib
         fig_hm, ax_hm = plt.subplots(figsize=(10, 10), dpi=100)
-        heatmap = sns.heatmap(sim_matrix, 
+        heatmap = sns.heatmap(rescaled_sim, 
                             xticklabels=kw_lemmas, 
                             yticklabels=kw_lemmas,
                             cmap="coolwarm", 
+                            vmin=0.0, vmax=1.0,
                             annot=False, 
                             ax=ax_hm,
-                            vmax=0.6,
                             color="white",
                             cbar_kws={'label': 'Similarity', 'shrink': 0.65, 'aspect': 20},
                             square=True)
