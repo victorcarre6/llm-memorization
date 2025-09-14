@@ -3,11 +3,10 @@ keybert
 pandas
 sqlalchemy
 nltk
-json
 levenshtein
 spacy
 torch
-protobuff
+protobuf
 seaborn
 mplcursors
 scikit-learn
@@ -16,7 +15,6 @@ wordcloud
 langdetect
 accelerate
 matplotlib
-tkinter
 pyperclip
 faiss-cpu
 jq
@@ -25,4 +23,3 @@ jupyter
 ipykernel
 setuptools
 wheel
-pip --upgrade
