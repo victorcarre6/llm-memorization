@@ -1,5 +1,16 @@
 # Local LLM Memorization
 
+<p align="center">
+  <img src="https://img.shields.io/github/stars/victorcarre6/llm-memorization?style=social" />
+  <img src="https://img.shields.io/github/forks/victorcarre6/llm-memorization?style=social" />
+  <img src="https://img.shields.io/github/license/victorcarre6/llm-memorization" />
+</p>
+<p align="center">
+  <a href="https://ko-fi.com/victorcarre">
+    <img src="https://ko-fi.com/img/githubbutton_sm.svg" />
+  </a>
+</p>
+
 > A project to index, archive, and search conversations with a local LLM (accessed via a library like LM Studio) using a SQLite database enriched with automatically extracted keywords.
 
 > The project is designed to work without calling any external APIs, ensuring data privacy.
